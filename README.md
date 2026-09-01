@@ -68,6 +68,10 @@ npm test
 
 Press `F5` in VS Code after compiling to open an Extension Development Host.
 
+The source is layered — see [ARCHITECTURE.md](ARCHITECTURE.md). The short version:
+`core/` and `data/` never import `vscode`, which is what lets the whole test suite
+run under plain `node --test` with no VS Code host.
+
 ## Packaging and local installation
 
 The build is reproducible from a clean checkout with Microsoft's official

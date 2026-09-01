@@ -391,12 +391,14 @@
   },
   "scripts": {
     "compile": "tsc -p .",
-    "test": "npm run compile && node --test out/test/*.test.js",
+    "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
     "vscode:prepublish": "npm run compile",
     "prepackage": "node -e \"require('node:fs').mkdirSync('dist',{recursive:true})\"",
     "package": "vsce package --out dist/local-change-groups-0.3.0.vsix",
     "install-extension": "npm run package && code --install-extension dist/local-change-groups-0.3.0.vsix --force",
-    "uninstall-extension": "code --uninstall-extension sherryabdulqader.local-change-groups"
+    "uninstall-extension": "code --uninstall-extension sherryabdulqader.local-change-groups",
+    "clean": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\"",
+    "precompile": "npm run clean"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

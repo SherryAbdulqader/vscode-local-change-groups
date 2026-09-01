@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { comparablePath, directoryLabel, groupColorId, isInSection, parseUriListEntries, partitionForDiscard, sectionLabel, statusBadge, statusColorId, statusLabel } from '../src/presentation';
+import { directoryLabel, groupColorId, statusBadge, statusColorId, statusLabel } from '../../src/core/changeLabels';
+import { partitionForDiscard } from '../../src/core/discardPlan';
+import { comparablePath } from '../../src/core/repositoryPaths';
+import { isInSection, sectionLabel } from '../../src/core/sections';
+import { parseUriListEntries } from '../../src/core/text';
 
 test('statusBadge renders the Source Control letter for each status', () => {
   assert.equal(statusBadge(0), 'M');

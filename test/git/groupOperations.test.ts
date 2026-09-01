@@ -4,8 +4,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import test from 'node:test';
-import type { GitChange, GitRepository } from '../src/git';
-import { acquireRepositoryLock, buildOperationPlan, executeGroupOperation, expandChangePaths } from '../src/operations';
+import type { GitChange, GitRepository } from '../../src/git/api';
+import { acquireRepositoryLock, buildOperationPlan, executeGroupOperation, expandChangePaths } from '../../src/git/groupOperations';
 
 const git = process.env.LOCAL_CHANGE_GROUPS_TEST_GIT || 'git';
 

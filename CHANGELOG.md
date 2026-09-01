@@ -41,6 +41,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   entries are skipped rather than silently unstaged.
 
 ### Changed
+- Restructured the source into layers — `core`, `data`, `git`, `view`, `services`,
+  `commands` — with no import cycles and no `vscode` import below the view layer.
+  Behavior is unchanged; see ARCHITECTURE.md. Git actions now live in one module
+  shared by the menus and the commit panel, so both take an identical path.
 - Changes are now bucketed by group once per repaint instead of being re-scanned
   for every group header and again for every group body. Path normalization used
   to run roughly `2 × groups × files` times per render; it now runs once per file.

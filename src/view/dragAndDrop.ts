@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
-import { comparablePath, parseUriListEntries } from './presentation';
-import { GroupStore } from './store';
-import { ChangeGroupsTreeProvider, DisplayChange, FileNode, GroupNode, TreeNode } from './tree';
+import { comparablePath } from '../core/repositoryPaths';
+import { parseUriListEntries } from '../core/text';
+import { GroupStore } from '../data/groupStore';
+import { ChangeGroupsTreeProvider } from './changeTree';
+import { DisplayChange, FileNode, GroupNode, TreeNode } from './nodes';
 
 /** Payload identifier used when files are dragged inside this view. */
 export const TREE_MIME_TYPE = 'application/vnd.code.tree.localchangegroups.view';

@@ -1,5 +1,17 @@
-import * as nodePath from 'node:path';
-import type { GitChange, GitRepository } from './git';
+import type { GitChange, GitRepository } from '../git/api';
+import { assignmentKey, relativeChangePath } from './repositoryPaths';
+
+/**
+ * Reads the Git extension's four change lists into one deduplicated view.
+ *
+ * Git reports the same file more than once when it is both staged and edited
+ * again, and reports a rename under two paths. Both are collapsed here so the
+ * rest of the extension can treat one file as exactly one entry, while keeping
+ * enough information to place it in the right section and to follow renames.
+ *
+ * Only the `GitRepository` *type* is imported, so this module still carries no
+ * runtime dependency on VS Code.
+ */
 
 export type ChangeArea = 'Working Tree' | 'Staged' | 'Working Tree + Staged' | 'Merge';
 
@@ -7,7 +19,9 @@ export interface CollectedChange {
   repository: GitRepository;
   change: GitChange;
   relativePath: string;
+  /** The key for the file's current path, which an assignment is written to. */
   fileKey: string;
+  /** The current key plus any rename alias, all of which a move must clear. */
   assignmentKeys: string[];
   area: ChangeArea;
 }
@@ -19,37 +33,6 @@ export function assignedGroupId(change: CollectedChange, lookup: (key: string) =
     if (groupId) return groupId;
   }
   return undefined;
-}
-
-/** Returns a stable slash-separated repository-relative path. */
-export function relativeChangePath(repositoryRoot: string, filePath: string): string {
-  if (!repositoryRoot.trim() || !filePath.trim()) {
-    throw new Error('Repository and file paths are required.');
-  }
-
-  const relative = nodePath.relative(repositoryRoot, filePath);
-  if (!relative || relative === '..' || relative.startsWith(`..${nodePath.sep}`) || nodePath.isAbsolute(relative)) {
-    throw new Error('The file must be inside the repository.');
-  }
-
-  return relative.split(nodePath.sep).join('/');
-}
-
-/** Builds the private assignment key for one changed file. */
-export function assignmentKey(
-  repositoryRoot: string,
-  relativePath: string,
-  platform: NodeJS.Platform = process.platform
-): string {
-  if (!repositoryRoot.trim() || !relativePath.trim()) {
-    throw new Error('Repository and relative paths are required.');
-  }
-
-  const pathApi = platform === 'win32' ? nodePath.win32 : nodePath.posix;
-  const resolvedRoot = pathApi.resolve(repositoryRoot).replace(/\\/g, '/');
-  const normalizedRoot = platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
-  const normalizedPath = relativePath.replace(/\\/g, '/').replace(/^\.\//, '');
-  return `${normalizedRoot}::${normalizedPath}`;
 }
 
 /** Collects and deduplicates changes exposed by the Git API. */

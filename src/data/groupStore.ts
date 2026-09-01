@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_GROUP_COLOR, GroupColor, isGroupColor, LocalGroup, normalizeGroupIcon, normalizeGroupName, normalizePersistedState, PersistedState } from './model';
+import { DEFAULT_GROUP_COLOR, GroupColor, isGroupColor, LocalGroup, normalizeGroupIcon, normalizeGroupName } from '../core/groups';
+import { normalizePersistedState, PersistedState } from '../core/persistence';
 
 const STORAGE_KEY = 'localChangeGroups.state.v1';
 

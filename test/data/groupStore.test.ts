@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MementoLike, GroupStore } from '../src/store';
+import { MementoLike, GroupStore } from '../../src/data/groupStore';
 
 class MemoryMemento implements MementoLike {
   public value: unknown;

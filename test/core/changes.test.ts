@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assignedGroupId, assignmentKey, collectChanges, relativeChangePath } from '../src/path';
-import type { GitChange, GitRepository } from '../src/git';
+import { assignedGroupId, collectChanges } from '../../src/core/changes';
+import { assignmentKey, relativeChangePath } from '../../src/core/repositoryPaths';
+import type { GitChange, GitRepository } from '../../src/git/api';
 
 test('relativeChangePath returns slash-separated paths', () => {
   const result = relativeChangePath('C:\\repo', 'C:\\repo\\src\\file.ts');

@@ -1,111 +1,34 @@
 import { randomBytes } from 'node:crypto';
-import * as vscode from 'vscode';
-import { LocalGroup } from './model';
-import { groupColorId } from './presentation';
+import { groupColorId } from '../../core/changeLabels';
+import type { GroupColor } from '../../core/groups';
 
-/** The Git action a panel button asks for. */
-export type PanelAction = 'stage' | 'unstage' | 'commit' | 'push';
+/**
+ * The commit panel's HTML document.
+ *
+ * Isolated from the provider so the markup, styles, and page script can be read
+ * as one page rather than buried in class methods.
+ *
+ * Two rules hold this together:
+ *
+ * - **Nothing loads from outside.** The CSP is `default-src 'none'` with a
+ *   per-render nonce for the one inline style and one inline script, and the
+ *   provider declares no `localResourceRoots`. There is no bundler step and no
+ *   asset to ship.
+ * - **Every color comes from VS Code.** Styling uses `--vscode-*` custom
+ *   properties, including the extension's own contributed group colors, so the
+ *   panel tracks the active theme exactly instead of approximating it.
+ */
 
-/** One group as presented by the commit panel. */
-export interface PanelGroup {
-  id: string;
-  name: string;
-  color: LocalGroup['color'];
-  count: number;
+/** Returns the CSS color expression for a group's contributed theme color. */
+export function panelColorVariable(color: GroupColor): string {
+  const variable = `--vscode-${groupColorId(color).replace(/\./g, '-')}`;
+  return `var(${variable}, var(--vscode-descriptionForeground))`;
 }
 
-/** State the panel needs to render itself. */
-export interface PanelState {
-  groups: PanelGroup[];
-  selectedGroupId?: string;
-  branch?: string;
-}
-
-/** Runs one panel action, reporting failures to the caller's handler. */
-export type PanelRunner = (action: PanelAction, groupId: string, message: string) => Promise<void>;
-
-/** Renders a Source Control style commit box above the change tree. */
-export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-  public static readonly viewId = 'localChangeGroups.commitPanel';
-
-  private view: vscode.WebviewView | undefined;
-  private selectedGroupId: string | undefined;
-  private readonly subscriptions: vscode.Disposable[] = [];
-
-  /** Wires the panel to the state it renders and the actions it runs. */
-  public constructor(
-    private readonly readState: () => Omit<PanelState, 'selectedGroupId'>,
-    private readonly run: PanelRunner
-  ) {
-    if (typeof readState !== 'function' || typeof run !== 'function') {
-      throw new Error('A state reader and an action runner are required.');
-    }
-  }
-
-  /** Releases the webview message subscription. */
-  public dispose(): void {
-    for (const subscription of this.subscriptions) {
-      subscription.dispose();
-    }
-  }
-
-  /** Builds the panel the first time its section becomes visible. */
-  public resolveWebviewView(view: vscode.WebviewView): void {
-    this.view = view;
-    view.webview.options = { enableScripts: true, localResourceRoots: [] };
-    view.webview.html = this.html(view.webview);
-    this.subscriptions.push(
-      view.webview.onDidReceiveMessage(async (incoming: unknown) => {
-        const request = parseRequest(incoming);
-        if (!request) {
-          return;
-        }
-        if (request.type === 'ready') {
-          this.publish();
-          return;
-        }
-        await this.run(request.action, request.groupId, request.message);
-      })
-    );
-    view.onDidDispose(() => { this.view = undefined; }, undefined, this.subscriptions);
-    this.publish();
-  }
-
-  /** Targets a group chosen elsewhere, such as by selecting a tree row. */
-  public setSelectedGroup(groupId: string | undefined): void {
-    if (this.selectedGroupId === groupId) {
-      return;
-    }
-    this.selectedGroupId = groupId;
-    this.publish();
-  }
-
-  /** Repaints the panel from current group state. */
-  public refresh(): void {
-    this.publish();
-  }
-
-  /** Sends the current groups, counts, and branch to the webview. */
-  private publish(): void {
-    if (!this.view) {
-      return;
-    }
-    const state = this.readState();
-    const selectedGroupId = state.groups.some(group => group.id === this.selectedGroupId)
-      ? this.selectedGroupId
-      : state.groups[0]?.id;
-    void this.view.webview.postMessage({
-      type: 'state',
-      branch: state.branch,
-      selectedGroupId,
-      groups: state.groups.map(group => ({ ...group, color: panelColorVariable(group.color) }))
-    });
-  }
-
-  /** Returns the panel document, locked down to its own inline script. */
-  private html(webview: vscode.Webview): string {
-    const nonce = randomBytes(16).toString('base64');
-    return `<!DOCTYPE html>
+/** Builds the panel document with a fresh script nonce. */
+export function commitPanelHtml(): string {
+  const nonce = randomBytes(16).toString('base64');
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -205,6 +128,10 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.D
   const pushButton = document.getElementById('push');
 
   let branch = '';
+
+  // Drafts live in webview state rather than the host: VS Code tears the page
+  // down whenever the section is hidden, and retainContextWhenHidden would keep
+  // a whole hidden webview alive just to hold a string.
   const drafts = Object.assign({}, (vscode.getState() || {}).drafts);
 
   /** Keeps typed messages per group across visibility changes. */
@@ -275,42 +202,4 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.D
 </script>
 </body>
 </html>`;
-  }
-}
-
-/** Returns the CSS color expression for a group's contributed theme color. */
-export function panelColorVariable(color: LocalGroup['color']): string {
-  const variable = `--vscode-${groupColorId(color).replace(/\./g, '-')}`;
-  return `var(${variable}, var(--vscode-descriptionForeground))`;
-}
-
-type PanelRequest =
-  | { type: 'ready' }
-  | { type: 'run'; action: PanelAction; groupId: string; message: string };
-
-/** Validates a message posted by the panel before acting on it. */
-function parseRequest(value: unknown): PanelRequest | undefined {
-  if (!value || typeof value !== 'object') {
-    return undefined;
-  }
-  const candidate = value as Record<string, unknown>;
-  if (candidate.type === 'ready') {
-    return { type: 'ready' };
-  }
-  if (candidate.type !== 'run') {
-    return undefined;
-  }
-  const action = candidate.action;
-  if (action !== 'stage' && action !== 'unstage' && action !== 'commit' && action !== 'push') {
-    return undefined;
-  }
-  if (typeof candidate.groupId !== 'string' || !candidate.groupId.trim()) {
-    return undefined;
-  }
-  return {
-    type: 'run',
-    action,
-    groupId: candidate.groupId,
-    message: typeof candidate.message === 'string' ? candidate.message : ''
-  };
 }

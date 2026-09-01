@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as nodePath from 'node:path';
-import type { GitChange, GitRepository } from './git';
-import { GitRunner } from './gitRunner';
+import type { GitChange, GitRepository } from './api';
+import { GitRunner } from './runner';
 
 export type OperationKind = 'stage' | 'commit' | 'push';
 export interface GroupOperationPlan {

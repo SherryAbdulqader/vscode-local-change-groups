@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { GroupColor, isGroupColor } from './model';
-import { CHANGE_SCHEME, groupColorId, statusBadge, statusColorId, statusLabel } from './presentation';
+import { GroupColor, isGroupColor } from '../core/groups';
+import { CHANGE_SCHEME, groupColorId, statusBadge, statusColorId, statusLabel } from '../core/changeLabels';
 
-export { CHANGE_SCHEME } from './presentation';
+export { CHANGE_SCHEME } from '../core/changeLabels';
 
 const STATUS_QUERY_KEY = 's';
 const COLOR_QUERY_KEY = 'c';

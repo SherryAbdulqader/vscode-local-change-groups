@@ -1,15 +1,10 @@
-import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
-import { changeDecorationUri } from './decoration';
-import { GitApi, GitRepository } from './git';
-import { DEFAULT_GROUP_ICON, LocalGroup } from './model';
-import { assignedGroupId, collectChanges, CollectedChange } from './path';
-import { ChangeSection, directoryLabel, groupColorId, isInSection, sectionLabel, statusLabel } from './presentation';
-import { GroupStore } from './store';
-
-export { collectChanges } from './path';
-export { directoryLabel, statusLabel } from './presentation';
-export type { ChangeSection } from './presentation';
+import { assignedGroupId, collectChanges } from '../core/changes';
+import { ChangeSection, isInSection } from '../core/sections';
+import { GroupStore } from '../data/groupStore';
+import { GitApi, GitRepository } from '../git/api';
+import { DisplayChange, FileNode, GroupNode, RepositoryNode, SectionNode, TreeNode } from './nodes';
+import { fileItem, groupItem, repositoryItem, sectionItem } from './treeItems';
 
 /** Collapses bursts of Git status events into one repaint. */
 const REFRESH_DEBOUNCE_MS = 120;
@@ -17,43 +12,22 @@ const REFRESH_DEBOUNCE_MS = 120;
 /** Bucket key standing in for the Ungrouped section, never a real group id. */
 const UNGROUPED_KEY = '';
 
-export type TreeNode = RepositoryNode | SectionNode | GroupNode | FileNode;
-
-export class RepositoryNode {
-  public readonly kind = 'repository';
-  public constructor(public readonly repository: GitRepository) {}
-}
-
-export class SectionNode {
-  public readonly kind = 'section';
-  public constructor(
-    public readonly repository: GitRepository,
-    public readonly section: ChangeSection
-  ) {}
-}
-
-export class GroupNode {
-  public readonly kind = 'group';
-  public constructor(
-    public readonly repository: GitRepository,
-    public readonly group: LocalGroup | undefined,
-    public readonly section?: ChangeSection
-  ) {}
-}
-
-export type DisplayChange = CollectedChange;
-
-export class FileNode {
-  public readonly kind = 'file';
-  public constructor(
-    public readonly displayChange: DisplayChange,
-    public readonly groupId: string | undefined,
-    public readonly groupColor: LocalGroup['color'] | undefined,
-    public readonly section?: ChangeSection
-  ) {}
-}
-
-/** Provides a read-only, locally grouped view of Git changes. */
+/**
+ * Supplies the tree's contents and keeps them in step with Git.
+ *
+ * Two things here exist purely for responsiveness on large repositories:
+ *
+ * - Git status events are debounced, because the Git extension fires them on
+ *   every save and every internal poll, and each one would otherwise rebuild the
+ *   whole tree.
+ * - Changes are bucketed by group **once per repaint** and cached. Every group
+ *   header needs a count and every group body needs a list; without the cache
+ *   `collectChanges` — which normalizes a path per file — would run roughly
+ *   twice per group, so a repository with many groups and many changed files
+ *   would re-derive the same keys thousands of times for one repaint.
+ *
+ * The cache is invalidated by `refresh()`, which every mutation already calls.
+ */
 export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscode.Disposable {
   private readonly changedEmitter = new vscode.EventEmitter<TreeNode | undefined | void>();
   private readonly repositorySubscriptions = new Map<GitRepository, vscode.Disposable>();
@@ -108,15 +82,15 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   /** Returns the VS Code presentation for a tree node. */
   public getTreeItem(element: TreeNode): vscode.TreeItem {
     if (element instanceof RepositoryNode) {
-      return this.repositoryItem(element);
+      return repositoryItem(element);
     }
     if (element instanceof SectionNode) {
-      return this.sectionItem(element);
+      return sectionItem(element, this.sectionCount(element));
     }
     if (element instanceof GroupNode) {
-      return this.groupItem(element);
+      return groupItem(element, this.visibleChanges(element).length);
     }
-    return this.fileItem(element);
+    return fileItem(element);
   }
 
   /** Returns repository, section, group, or file children. */
@@ -158,12 +132,6 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return undefined;
   }
 
-  /** Returns the repository row above a top-level node, if one is rendered. */
-  private rootParent(repository: GitRepository): TreeNode | undefined {
-    const repositories = this.gitApi?.repositories ?? [];
-    return repositories.length === 1 ? undefined : new RepositoryNode(repository);
-  }
-
   /** Returns every changed file currently known across repositories. */
   public getAllChanges(): DisplayChange[] {
     return (this.gitApi?.repositories ?? [])
@@ -171,7 +139,12 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
       .flat();
   }
 
-  /** Returns the currently visible changes assigned to a repository-scoped group. */
+  /**
+   * Returns every change assigned to a group, ignoring sections.
+   *
+   * Git actions must always act on a group as a whole, so this deliberately does
+   * not narrow by section even when invoked from a row inside one.
+   */
   public getGroupChanges(node: GroupNode): DisplayChange[] {
     if (!node.group) throw new Error('Select a named group.');
     return this.changesForGroup(node.repository, node.group.id);
@@ -202,6 +175,12 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return node.section ? changes.filter(change => isInSection(change.area, node.section!)) : changes;
   }
 
+  /** Totals one section across every group, for its header count. */
+  private sectionCount(node: SectionNode): number {
+    return this.groupNodes(node.repository, node.section)
+      .reduce((total, group) => total + this.visibleChanges(group).length, 0);
+  }
+
   /** Reports whether the index holds anything this view would show. */
   private hasStagedChanges(repository: GitRepository): boolean {
     for (const bucket of this.grouping(repository).values()) {
@@ -212,68 +191,10 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return false;
   }
 
-  /** Builds the repository row shown when several repositories are open. */
-  private repositoryItem(element: RepositoryNode): vscode.TreeItem {
-    const label = nodePath.basename(element.repository.rootUri.fsPath) || element.repository.rootUri.fsPath;
-    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
-    item.id = `repository:${element.repository.rootUri.toString()}`;
-    item.contextValue = 'localChangeGroups.repository';
-    item.iconPath = new vscode.ThemeIcon('repo');
-    item.description = element.repository.rootUri.fsPath;
-    return item;
-  }
-
-  /** Builds a Staged Changes or Changes header row. */
-  private sectionItem(element: SectionNode): vscode.TreeItem {
-    const count = this.groupNodes(element.repository, element.section)
-      .reduce((total, node) => total + this.visibleChanges(node).length, 0);
-    const item = new vscode.TreeItem(sectionLabel(element.section), vscode.TreeItemCollapsibleState.Expanded);
-    item.id = `section:${element.repository.rootUri.toString()}:${element.section}`;
-    item.description = String(count);
-    item.contextValue = `localChangeGroups.section.${element.section}`;
-    item.iconPath = new vscode.ThemeIcon(element.section === 'staged' ? 'check' : 'edit');
-    item.tooltip = element.section === 'staged'
-      ? 'Files staged in the Git index, grouped the same way'
-      : 'Files changed in the working tree, grouped the same way';
-    return item;
-  }
-
-  /** Builds a group header row styled after the Source Control section headers. */
-  private groupItem(element: GroupNode): vscode.TreeItem {
-    const changes = this.visibleChanges(element);
-    const name = element.group?.name ?? 'Ungrouped';
-    const item = new vscode.TreeItem(name, changes.length
-      ? vscode.TreeItemCollapsibleState.Expanded
-      : vscode.TreeItemCollapsibleState.Collapsed);
-    item.id = `group:${element.repository.rootUri.toString()}:${element.section ?? 'all'}:${element.group?.id ?? 'ungrouped'}`;
-    item.description = String(changes.length);
-    item.tooltip = element.group
-      ? `${name} — ${changes.length} change${changes.length === 1 ? '' : 's'}\nDrop files here to assign them.`
-      : 'Changes that belong to no group\nDrop files here to remove them from their group.';
-    item.contextValue = element.group ? 'localChangeGroups.group' : 'localChangeGroups.ungrouped';
-    item.iconPath = new vscode.ThemeIcon(
-      element.group ? element.group.icon ?? DEFAULT_GROUP_ICON : 'circle-outline',
-      element.group ? groupThemeColor(element.group.color) : undefined
-    );
-    return item;
-  }
-
-  /** Builds a file row that mirrors the Source Control changes list. */
-  private fileItem(element: FileNode): vscode.TreeItem {
-    const { displayChange } = element;
-    const item = new vscode.TreeItem(nodePath.basename(displayChange.relativePath), vscode.TreeItemCollapsibleState.None);
-    item.id = `file:${element.section ?? 'all'}:${element.groupId ?? 'ungrouped'}:${displayChange.fileKey}`;
-    item.description = directoryLabel(displayChange.relativePath);
-    item.tooltip = `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
-    item.resourceUri = changeDecorationUri(displayChange.change.uri, displayChange.change.status, element.groupColor);
-    const membership = element.groupId ? 'grouped' : 'ungrouped';
-    item.contextValue = `localChangeGroups.file.${membership}${element.section ? `.${element.section}` : ''}`;
-    item.command = {
-      command: 'localChangeGroups.openChange',
-      title: 'Open Change',
-      arguments: [element]
-    };
-    return item;
+  /** Returns the repository row above a top-level node, if one is rendered. */
+  private rootParent(repository: GitRepository): TreeNode | undefined {
+    const repositories = this.gitApi?.repositories ?? [];
+    return repositories.length === 1 ? undefined : new RepositoryNode(repository);
   }
 
   /** Watches one repository for status changes. */
@@ -302,11 +223,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return this.grouping(repository).get(groupId ?? UNGROUPED_KEY) ?? [];
   }
 
-  /**
-   * Buckets a repository's changes by group once per repaint. Every row of the
-   * tree reads this, so scanning and normalizing paths happens a single time
-   * instead of once per group header and again per group body.
-   */
+  /** Buckets a repository's changes by group, once per repaint. See the class note. */
   private grouping(repository: GitRepository): Map<string, DisplayChange[]> {
     const cached = this.groupingCache.get(repository);
     if (cached) {
@@ -328,9 +245,4 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     this.groupingCache.set(repository, grouped);
     return grouped;
   }
-}
-
-/** Maps a stored palette key to its contributed theme color. */
-function groupThemeColor(color: LocalGroup['color']): vscode.ThemeColor {
-  return new vscode.ThemeColor(groupColorId(color));
 }
