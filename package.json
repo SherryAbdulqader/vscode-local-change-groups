@@ -35,70 +35,87 @@
     "commands": [
       {
         "command": "localChangeGroups.createGroup",
-        "title": "Local Change Groups: Create Group",
-        "icon": "$(add)"
+        "title": "Create Group",
+        "icon": "$(add)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.renameGroup",
-        "title": "Local Change Groups: Rename Group"
+        "title": "Rename Group",
+        "category": "Local Change Groups",
+        "icon": "$(edit)"
       },
       {
         "command": "localChangeGroups.changeColor",
-        "title": "Local Change Groups: Change Group Color",
-        "icon": "$(symbol-color)"
+        "title": "Change Group Color",
+        "icon": "$(symbol-color)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.deleteGroup",
-        "title": "Local Change Groups: Delete Group"
+        "title": "Delete Group",
+        "category": "Local Change Groups",
+        "icon": "$(trash)"
       },
       {
         "command": "localChangeGroups.createGroupFromSelection",
-        "title": "Local Change Groups: New Group from Selection",
-        "icon": "$(new-folder)"
+        "title": "New Group from Selection",
+        "icon": "$(new-folder)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.assignToGroup",
-        "title": "Local Change Groups: Assign or Move Files",
-        "icon": "$(arrow-right)"
+        "title": "Assign or Move Files",
+        "icon": "$(arrow-right)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.removeFromGroup",
-        "title": "Local Change Groups: Remove Files from Group",
-        "icon": "$(close)"
+        "title": "Remove Files from Group",
+        "icon": "$(close)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.discardChanges",
-        "title": "Local Change Groups: Discard Changes",
-        "icon": "$(discard)"
+        "title": "Discard Changes",
+        "icon": "$(discard)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.discardGroupChanges",
-        "title": "Local Change Groups: Discard All Changes in Group",
-        "icon": "$(discard)"
+        "title": "Discard All Changes in Group",
+        "icon": "$(discard)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.refresh",
-        "title": "Local Change Groups: Refresh",
-        "icon": "$(refresh)"
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.openChange",
-        "title": "Local Change Groups: Open Change"
+        "title": "Open Change",
+        "category": "Local Change Groups",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "localChangeGroups.stageGroup",
-        "title": "Local Change Groups: Stage Group",
-        "icon": "$(add)"
+        "title": "Stage Group",
+        "icon": "$(add)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.commitGroup",
-        "title": "Local Change Groups: Commit Group",
-        "icon": "$(check)"
+        "title": "Commit Group",
+        "icon": "$(check)",
+        "category": "Local Change Groups"
       },
       {
         "command": "localChangeGroups.commitAndPushGroup",
-        "title": "Local Change Groups: Commit & Push Group",
-        "icon": "$(cloud-upload)"
+        "title": "Commit & Push Group",
+        "icon": "$(cloud-upload)",
+        "category": "Local Change Groups"
       }
     ],
     "colors": [
@@ -315,6 +332,21 @@
           "command": "localChangeGroups.discardGroupChanges",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
           "group": "zdiscard@1"
+        },
+        {
+          "command": "localChangeGroups.changeColor",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "1_modify@1"
+        },
+        {
+          "command": "localChangeGroups.renameGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "1_modify@2"
+        },
+        {
+          "command": "localChangeGroups.deleteGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "1_modify@3"
         }
       ]
     }
