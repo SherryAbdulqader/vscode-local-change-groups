@@ -4,11 +4,12 @@ import { changeDecorationUri } from './decoration';
 import { GitApi, GitRepository } from './git';
 import { LocalGroup } from './model';
 import { assignedGroupId, collectChanges, CollectedChange } from './path';
-import { directoryLabel, groupColorId, statusLabel } from './presentation';
+import { ChangeSection, directoryLabel, groupColorId, isInSection, sectionLabel, statusLabel } from './presentation';
 import { GroupStore } from './store';
 
 export { collectChanges } from './path';
 export { directoryLabel, statusLabel } from './presentation';
+export type { ChangeSection } from './presentation';
 
 /** Collapses bursts of Git status events into one repaint. */
 const REFRESH_DEBOUNCE_MS = 120;
@@ -16,18 +17,27 @@ const REFRESH_DEBOUNCE_MS = 120;
 /** Bucket key standing in for the Ungrouped section, never a real group id. */
 const UNGROUPED_KEY = '';
 
-export type TreeNode = RepositoryNode | GroupNode | FileNode;
+export type TreeNode = RepositoryNode | SectionNode | GroupNode | FileNode;
 
 export class RepositoryNode {
   public readonly kind = 'repository';
   public constructor(public readonly repository: GitRepository) {}
 }
 
+export class SectionNode {
+  public readonly kind = 'section';
+  public constructor(
+    public readonly repository: GitRepository,
+    public readonly section: ChangeSection
+  ) {}
+}
+
 export class GroupNode {
   public readonly kind = 'group';
   public constructor(
     public readonly repository: GitRepository,
-    public readonly group: LocalGroup | undefined
+    public readonly group: LocalGroup | undefined,
+    public readonly section?: ChangeSection
   ) {}
 }
 
@@ -38,7 +48,8 @@ export class FileNode {
   public constructor(
     public readonly displayChange: DisplayChange,
     public readonly groupId: string | undefined,
-    public readonly groupColor: LocalGroup['color'] | undefined
+    public readonly groupColor: LocalGroup['color'] | undefined,
+    public readonly section?: ChangeSection
   ) {}
 }
 
@@ -99,26 +110,33 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     if (element instanceof RepositoryNode) {
       return this.repositoryItem(element);
     }
+    if (element instanceof SectionNode) {
+      return this.sectionItem(element);
+    }
     if (element instanceof GroupNode) {
       return this.groupItem(element);
     }
     return this.fileItem(element);
   }
 
-  /** Returns repository, group, or file children. */
+  /** Returns repository, section, group, or file children. */
   public getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
       const repositories = this.gitApi?.repositories ?? [];
       return repositories.length === 1
-        ? this.groupNodes(repositories[0])
+        ? this.topLevelNodes(repositories[0])
         : repositories.map(repository => new RepositoryNode(repository));
     }
     if (element instanceof RepositoryNode) {
-      return this.groupNodes(element.repository);
+      return this.topLevelNodes(element.repository);
+    }
+    if (element instanceof SectionNode) {
+      return this.groupNodes(element.repository, element.section)
+        .filter(node => this.visibleChanges(node).length > 0);
     }
     if (element instanceof GroupNode) {
-      return this.changesForGroup(element.repository, element.group?.id)
-        .map(change => new FileNode(change, element.group?.id, element.group?.color));
+      return this.visibleChanges(element)
+        .map(change => new FileNode(change, element.group?.id, element.group?.color, element.section));
     }
     return [];
   }
@@ -129,13 +147,21 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
       const group = element.groupId
         ? this.store.getGroups().find(candidate => candidate.id === element.groupId)
         : undefined;
-      return new GroupNode(element.displayChange.repository, group);
+      return new GroupNode(element.displayChange.repository, group, element.section);
     }
     if (element instanceof GroupNode) {
-      const repositories = this.gitApi?.repositories ?? [];
-      return repositories.length === 1 ? undefined : new RepositoryNode(element.repository);
+      return element.section ? new SectionNode(element.repository, element.section) : this.rootParent(element.repository);
+    }
+    if (element instanceof SectionNode) {
+      return this.rootParent(element.repository);
     }
     return undefined;
+  }
+
+  /** Returns the repository row above a top-level node, if one is rendered. */
+  private rootParent(repository: GitRepository): TreeNode | undefined {
+    const repositories = this.gitApi?.repositories ?? [];
+    return repositories.length === 1 ? undefined : new RepositoryNode(repository);
   }
 
   /** Returns every changed file currently known across repositories. */
@@ -151,12 +177,39 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return this.changesForGroup(node.repository, node.group.id);
   }
 
-  /** Builds the group rows shown under one repository. */
-  private groupNodes(repository: GitRepository): TreeNode[] {
+  /**
+   * Splits into Staged Changes and Changes once anything is staged, matching the
+   * Source Control view. With a clean index the split is noise, so groups sit at
+   * the top level instead.
+   */
+  private topLevelNodes(repository: GitRepository): TreeNode[] {
+    return this.hasStagedChanges(repository)
+      ? [new SectionNode(repository, 'staged'), new SectionNode(repository, 'unstaged')]
+      : this.groupNodes(repository, undefined);
+  }
+
+  /** Builds the group rows shown under one repository or section. */
+  private groupNodes(repository: GitRepository, section: ChangeSection | undefined): GroupNode[] {
     return [
-      ...this.store.getGroups().map(group => new GroupNode(repository, group)),
-      new GroupNode(repository, undefined)
+      ...this.store.getGroups().map(group => new GroupNode(repository, group, section)),
+      new GroupNode(repository, undefined, section)
     ];
+  }
+
+  /** Returns a group row's files, narrowed to its section when it has one. */
+  private visibleChanges(node: GroupNode): DisplayChange[] {
+    const changes = this.changesForGroup(node.repository, node.group?.id);
+    return node.section ? changes.filter(change => isInSection(change.area, node.section!)) : changes;
+  }
+
+  /** Reports whether the index holds anything this view would show. */
+  private hasStagedChanges(repository: GitRepository): boolean {
+    for (const bucket of this.grouping(repository).values()) {
+      if (bucket.some(change => isInSection(change.area, 'staged'))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Builds the repository row shown when several repositories are open. */
@@ -170,14 +223,29 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return item;
   }
 
+  /** Builds a Staged Changes or Changes header row. */
+  private sectionItem(element: SectionNode): vscode.TreeItem {
+    const count = this.groupNodes(element.repository, element.section)
+      .reduce((total, node) => total + this.visibleChanges(node).length, 0);
+    const item = new vscode.TreeItem(sectionLabel(element.section), vscode.TreeItemCollapsibleState.Expanded);
+    item.id = `section:${element.repository.rootUri.toString()}:${element.section}`;
+    item.description = String(count);
+    item.contextValue = `localChangeGroups.section.${element.section}`;
+    item.iconPath = new vscode.ThemeIcon(element.section === 'staged' ? 'check' : 'edit');
+    item.tooltip = element.section === 'staged'
+      ? 'Files staged in the Git index, grouped the same way'
+      : 'Files changed in the working tree, grouped the same way';
+    return item;
+  }
+
   /** Builds a group header row styled after the Source Control section headers. */
   private groupItem(element: GroupNode): vscode.TreeItem {
-    const changes = this.changesForGroup(element.repository, element.group?.id);
+    const changes = this.visibleChanges(element);
     const name = element.group?.name ?? 'Ungrouped';
     const item = new vscode.TreeItem(name, changes.length
       ? vscode.TreeItemCollapsibleState.Expanded
       : vscode.TreeItemCollapsibleState.Collapsed);
-    item.id = `group:${element.repository.rootUri.toString()}:${element.group?.id ?? 'ungrouped'}`;
+    item.id = `group:${element.repository.rootUri.toString()}:${element.section ?? 'all'}:${element.group?.id ?? 'ungrouped'}`;
     item.description = String(changes.length);
     item.tooltip = element.group
       ? `${name} — ${changes.length} change${changes.length === 1 ? '' : 's'}\nDrop files here to assign them.`
@@ -194,7 +262,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   private fileItem(element: FileNode): vscode.TreeItem {
     const { displayChange } = element;
     const item = new vscode.TreeItem(nodePath.basename(displayChange.relativePath), vscode.TreeItemCollapsibleState.None);
-    item.id = `file:${element.groupId ?? 'ungrouped'}:${displayChange.fileKey}`;
+    item.id = `file:${element.section ?? 'all'}:${element.groupId ?? 'ungrouped'}:${displayChange.fileKey}`;
     item.description = directoryLabel(displayChange.relativePath);
     item.tooltip = `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
     item.resourceUri = changeDecorationUri(displayChange.change.uri, displayChange.change.status, element.groupColor);

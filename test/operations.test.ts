@@ -116,7 +116,7 @@ function mockRepository(root: string, working: GitChange[], index: GitChange[] =
       HEAD: { name: 'main', commit: '', ahead: 0, behind: 0 },
       onDidChange: (() => ({ dispose() {} })) as GitRepository['state']['onDidChange']
     },
-    add: async () => {}, revert: async () => {}, commit: async () => {},
+    add: async () => {}, revert: async () => {}, clean: async () => {}, commit: async () => {},
     push: async (remote, branch, setUpstream) => { calls.push(`push:${remote}:${branch}:${setUpstream}`); },
     status: async () => {
       repository.state.HEAD!.commit = (await run(root, ['rev-parse', 'HEAD'])).toString().trim();

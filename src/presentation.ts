@@ -1,5 +1,57 @@
 import * as nodePath from 'node:path';
 import { GroupColor } from './model';
+import type { ChangeArea } from './path';
+
+/** The two halves of the Source Control view: index and working tree. */
+export type ChangeSection = 'staged' | 'unstaged';
+
+/**
+ * Decides which section a change belongs to. A partially staged file is real in
+ * both, exactly as the built-in Changes list shows it, so it is not exclusive.
+ */
+export function isInSection(area: ChangeArea, section: ChangeSection): boolean {
+  return section === 'staged'
+    ? area === 'Staged' || area === 'Working Tree + Staged'
+    : area !== 'Staged';
+}
+
+/** Returns the header shown for one section. */
+export function sectionLabel(section: ChangeSection): string {
+  return section === 'staged' ? 'Staged Changes' : 'Changes';
+}
+
+/** What a discard would do to each selected change. */
+export interface DiscardPartition<T> {
+  /** Tracked edits that revert to the last committed content. */
+  restore: T[];
+  /** Untracked files that are deleted from disk outright. */
+  remove: T[];
+  /** Staged-only entries a working-tree discard must not touch. */
+  skip: T[];
+}
+
+/**
+ * Splits changes by what discarding actually does to them, so the confirmation
+ * can state deletions separately from reverts. A file staged with no further
+ * working-tree edit is skipped rather than silently unstaged.
+ */
+export function partitionForDiscard<T>(
+  items: readonly T[],
+  area: (item: T) => ChangeArea,
+  status: (item: T) => number
+): DiscardPartition<T> {
+  const partition: DiscardPartition<T> = { restore: [], remove: [], skip: [] };
+  for (const item of items) {
+    if (!isInSection(area(item), 'unstaged')) {
+      partition.skip.push(item);
+    } else if (status(item) === 7) {
+      partition.remove.push(item);
+    } else {
+      partition.restore.push(item);
+    }
+  }
+  return partition;
+}
 
 /** Scheme used by tree rows so decorations never leak into other views. */
 export const CHANGE_SCHEME = 'local-change-groups';

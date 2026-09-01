@@ -26,6 +26,8 @@ export interface GitRepository {
   };
   add(paths: string[]): Promise<void>;
   revert(paths: string[]): Promise<void>;
+  /** Discards working-tree changes, deleting untracked files outright. */
+  clean(paths: string[]): Promise<void>;
   commit(message: string): Promise<void>;
   push(remoteName?: string, branchName?: string, setUpstream?: boolean, force?: number): Promise<void>;
   status(): Promise<void>;

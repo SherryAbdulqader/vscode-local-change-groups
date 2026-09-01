@@ -13,6 +13,9 @@ Prefer it beside the built-in **Changes** list? Drag the view's title onto the S
 - Assign, move, and remove changed files through tree menus or the Command Palette.
 - Choose from eight theme-aware colors for group dots. Set `localChangeGroups.fileColors` to `group` to tint file rows by their group instead of by Git status.
 - Commit from a Source Control style box at the top of the view: pick a group, type a message, press `Ctrl+Enter`. Drafts are kept per group.
+- See a count of changed files on the Activity Bar icon.
+- Split into **Staged Changes** and **Changes** the moment anything is staged, with your groups nested under each; the split disappears again when the index is clean.
+- Discard a whole group or any selection of files, behind a modal that states reverts and permanent deletions separately.
 - Stage one group, commit one group, or commit and push one group with safety checks.
 - Open tracked changes in VS Code's Git diff and untracked files in the editor.
 - Refresh automatically from VS Code's built-in Git extension.
@@ -51,6 +54,8 @@ It is disabled in untrusted and virtual workspaces.
 - **Commit & Push Group** supports only an already-configured upstream that is fully synchronized. It does not create branches, pull, resolve divergence, set upstreams, or force-push.
 - Assignments are local to the current VS Code workspace and are not shared with teammates.
 - Renames retain their group when the Git API reports the old path; unrelated moves may need reassignment.
+- VS Code gives a tree row one click target, so the group color dot cannot be clicked on its own. Recolor from the palette button on the row or the context menu.
+- Discard acts on working-tree changes only. A file staged with no further edit is left alone rather than being unstaged.
 
 ## Development
 
@@ -69,7 +74,7 @@ which is pinned as a dev dependency:
 
 ```text
 npm install
-npm test                     # 40 tests
+npm test                     # 46 tests
 npm run package              # -> dist/local-change-groups-<version>.vsix
 npm run install-extension    # package, then install into VS Code
 ```

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { comparablePath, directoryLabel, groupColorId, parseUriListEntries, statusBadge, statusColorId, statusLabel } from '../src/presentation';
+import { comparablePath, directoryLabel, groupColorId, isInSection, parseUriListEntries, partitionForDiscard, sectionLabel, statusBadge, statusColorId, statusLabel } from '../src/presentation';
 
 test('statusBadge renders the Source Control letter for each status', () => {
   assert.equal(statusBadge(0), 'M');
@@ -56,4 +56,44 @@ test('comparablePath ignores separator and case differences on Windows', () => {
 
 test('comparablePath preserves case on Linux', () => {
   assert.notEqual(comparablePath('/repo/File.ts', 'linux'), comparablePath('/repo/file.ts', 'linux'));
+});
+
+test('a partially staged file belongs to both sections', () => {
+  assert.equal(isInSection('Working Tree + Staged', 'staged'), true);
+  assert.equal(isInSection('Working Tree + Staged', 'unstaged'), true);
+});
+
+test('a purely staged file is absent from the working-tree section', () => {
+  assert.equal(isInSection('Staged', 'staged'), true);
+  assert.equal(isInSection('Staged', 'unstaged'), false);
+});
+
+test('working-tree and merge changes stay out of the staged section', () => {
+  assert.equal(isInSection('Working Tree', 'staged'), false);
+  assert.equal(isInSection('Working Tree', 'unstaged'), true);
+  assert.equal(isInSection('Merge', 'staged'), false);
+  assert.equal(isInSection('Merge', 'unstaged'), true);
+});
+
+test('sectionLabel matches the Source Control headers', () => {
+  assert.equal(sectionLabel('staged'), 'Staged Changes');
+  assert.equal(sectionLabel('unstaged'), 'Changes');
+});
+
+test('partitionForDiscard separates deletions from reverts and skips staged-only files', () => {
+  const items = [
+    { area: 'Working Tree' as const, status: 5 },
+    { area: 'Working Tree' as const, status: 7 },
+    { area: 'Staged' as const, status: 0 },
+    { area: 'Working Tree + Staged' as const, status: 5 }
+  ];
+  const result = partitionForDiscard(items, item => item.area, item => item.status);
+  assert.deepEqual(result.restore, [items[0], items[3]]);
+  assert.deepEqual(result.remove, [items[1]]);
+  assert.deepEqual(result.skip, [items[2]]);
+});
+
+test('partitionForDiscard returns empty buckets for an empty selection', () => {
+  const result = partitionForDiscard([], () => 'Working Tree', () => 5);
+  assert.deepEqual(result, { restore: [], remove: [], skip: [] });
 });

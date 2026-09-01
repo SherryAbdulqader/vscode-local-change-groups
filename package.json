@@ -67,6 +67,16 @@
         "icon": "$(close)"
       },
       {
+        "command": "localChangeGroups.discardChanges",
+        "title": "Local Change Groups: Discard Changes",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "localChangeGroups.discardGroupChanges",
+        "title": "Local Change Groups: Discard All Changes in Group",
+        "icon": "$(discard)"
+      },
+      {
         "command": "localChangeGroups.refresh",
         "title": "Local Change Groups: Refresh",
         "icon": "$(refresh)"
@@ -290,6 +300,21 @@
           "command": "localChangeGroups.openChange",
           "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
           "group": "navigation@1"
+        },
+        {
+          "command": "localChangeGroups.discardChanges",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "group": "inline@3"
+        },
+        {
+          "command": "localChangeGroups.discardChanges",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "group": "zdiscard@1"
+        },
+        {
+          "command": "localChangeGroups.discardGroupChanges",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "zdiscard@1"
         }
       ]
     }

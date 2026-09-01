@@ -26,6 +26,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Ctrl+Enter` commits, and unsent messages are kept per group. It is a webview
   locked to `default-src 'none'` with a per-render nonce and no local resource
   roots; every action it requests is re-validated in the extension host.
+- A count of changed files as a badge on the Activity Bar icon.
+- **Staged Changes** and **Changes** sections, appearing only once the index holds
+  something, with groups nested under each. A partially staged file appears in
+  both, matching the built-in Changes list.
+- **Discard Changes** for a selection of files and **Discard All Changes in Group**.
+  The modal counts reverts and permanent deletions separately, and staged-only
+  entries are skipped rather than silently unstaged.
 
 ### Changed
 - Changes are now bucketed by group once per repaint instead of being re-scanned

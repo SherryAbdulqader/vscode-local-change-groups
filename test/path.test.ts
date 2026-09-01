@@ -80,6 +80,7 @@ function repository(
     },
     add: async () => {},
     revert: async () => {},
+    clean: async () => {},
     commit: async () => {},
     push: async () => {},
     status: async () => {}

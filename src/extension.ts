@@ -6,7 +6,8 @@ import { getGitApi } from './git';
 import { GroupStore } from './store';
 import { ChangeGroupsTreeProvider, DisplayChange, FileNode, GroupNode } from './tree';
 import { GROUP_COLORS, GroupColor, LocalGroup } from './model';
-import { buildOperationPlan, executeGroupOperation } from './operations';
+import { acquireRepositoryLock, buildOperationPlan, executeGroupOperation } from './operations';
+import { partitionForDiscard } from './presentation';
 
 /** Activates the local grouping view and guarded Git actions. */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -44,9 +45,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(vscode.window.registerFileDecorationProvider(decorations));
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(CommitPanelProvider.viewId, commitPanel),
-      provider.onDidChangeTreeData(() => commitPanel.refresh()),
+      provider.onDidChangeTreeData(() => {
+        commitPanel.refresh();
+        view.badge = changeBadge(provider);
+      }),
       view.onDidChangeSelection(event => commitPanel.setSelectedGroup(selectedGroupId(event.selection)))
     );
+    view.badge = changeBadge(provider);
     context.subscriptions.push(
       vscode.commands.registerCommand('localChangeGroups.refresh', () => provider.refresh()),
       vscode.commands.registerCommand('localChangeGroups.createGroup', () => runCommand(output, async () => {
@@ -123,6 +128,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const group = await store.createGroup(name, color, changes);
         provider.refresh();
         output.appendLine(`Created ${group.name} holding ${describeCount(changes.length)}`);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.discardChanges', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
+        const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select changed files to discard');
+        if (changes.length === 0) return;
+        await discardChanges(changes, provider, output);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.discardGroupChanges', (node?: GroupNode) => runCommand(output, async () => {
+        const selected = await requireGroupNode(node, store, gitApi, 'Select a group to discard');
+        if (!selected) return;
+        await discardChanges(provider.getGroupChanges(selected), provider, output, selected.group!.name);
       })),
       vscode.commands.registerCommand('localChangeGroups.openChange', (node?: FileNode) => runCommand(output, async () => {
         if (!node?.displayChange) {
@@ -215,6 +230,12 @@ function countGroupFiles(
     .reduce((total, repository) => total + provider.getGroupChanges(new GroupNode(repository, group)).length, 0);
 }
 
+/** Returns the Activity Bar badge counting every changed file, or none when clean. */
+function changeBadge(provider: ChangeGroupsTreeProvider): vscode.ViewBadge | undefined {
+  const count = provider.getAllChanges().length;
+  return count > 0 ? { value: count, tooltip: `${describeCount(count)} changed` } : undefined;
+}
+
 /** Returns the group a tree selection points at, if any. */
 function selectedGroupId(selection: readonly unknown[]): string | undefined {
   for (const node of selection) {
@@ -222,6 +243,50 @@ function selectedGroupId(selection: readonly unknown[]): string | undefined {
     if (node instanceof FileNode && node.groupId) return node.groupId;
   }
   return undefined;
+}
+
+/**
+ * Discards working-tree changes after a modal that states deletions separately
+ * from reverts. Staged-only entries are left alone rather than being unstaged.
+ */
+async function discardChanges(
+  changes: readonly DisplayChange[],
+  provider: ChangeGroupsTreeProvider,
+  output: vscode.OutputChannel,
+  groupName?: string
+): Promise<void> {
+  const { restore, remove, skip } = partitionForDiscard(changes, item => item.area, item => item.change.status);
+  const affected = [...restore, ...remove];
+  if (affected.length === 0) {
+    throw new Error('Nothing to discard: the selection has no working-tree changes.');
+  }
+
+  const detail = [
+    restore.length ? `${describeCount(restore.length)} will be restored to the last committed state.` : '',
+    remove.length ? `${describeCount(remove.length)} untracked will be permanently deleted from disk.` : '',
+    skip.length ? `${describeCount(skip.length)} staged with no further edit will be left alone.` : ''
+  ].filter(Boolean).join('\n');
+
+  const confirmation = await vscode.window.showWarningMessage(
+    groupName
+      ? `Discard working-tree changes in group "${groupName}"? This cannot be undone.`
+      : `Discard working-tree changes in ${describeCount(affected.length)}? This cannot be undone.`,
+    { modal: true, detail },
+    'Discard Changes'
+  );
+  if (confirmation !== 'Discard Changes') return;
+
+  for (const repository of new Set(affected.map(item => item.repository))) {
+    const release = acquireRepositoryLock(repository.rootUri.fsPath);
+    try {
+      const paths = affected.filter(item => item.repository === repository).map(item => item.change.uri.fsPath);
+      await repository.clean(paths);
+    } finally {
+      release();
+    }
+  }
+  provider.refresh();
+  output.appendLine(`Discarded ${describeCount(affected.length)}${groupName ? ` in ${groupName}` : ''}`);
 }
 
 /** Stages exactly one group's files. */
