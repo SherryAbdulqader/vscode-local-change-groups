@@ -52,3 +52,45 @@ npm test
 ```
 
 Press `F5` in VS Code after compiling to open an Extension Development Host.
+
+## Packaging and local installation
+
+The build is reproducible from a clean checkout with Microsoft's official
+[`@vscode/vsce`](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) tool,
+which is pinned as a dev dependency:
+
+```text
+npm install
+npm test                     # 26 tests
+npm run package              # -> dist/local-change-groups-<version>.vsix
+npm run install-extension    # package, then install into VS Code
+```
+
+`npm run install-extension` runs `code --install-extension ... --force`, so it also
+upgrades an already-installed copy. Reload the window afterwards, then open the
+Source Control sidebar to find the **Local Change Groups** view. To remove it:
+
+```text
+npm run uninstall-extension
+```
+
+### What ships in the .vsix
+
+`vscode:prepublish` compiles TypeScript first, and `.vscodeignore` restricts the
+archive to runtime files only — the compiled `out/src/**` output, `package.json`,
+`README.md`, `CHANGELOG.md`, and `LICENSE`. Sources, tests, compiled tests, source
+maps, `tsconfig.json`, `node_modules/`, `package-lock.json`, and repository metadata
+are all excluded. The extension declares no runtime dependencies, so nothing from
+`node_modules/` is bundled. Verify a build with:
+
+```text
+npx vsce ls
+```
+
+### Publishing to the Marketplace
+
+Publishing is a separate step and is intentionally not automated here: it requires an
+Azure DevOps publisher account for `sherryabdulqader` and a Personal Access Token with
+**Marketplace → Manage** scope. With that token available, publish with
+`npx vsce publish` (or upload `dist/local-change-groups-<version>.vsix` through the
+Marketplace publisher portal). Never commit the token.

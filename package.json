@@ -5,6 +5,14 @@
   "version": "0.2.0",
   "publisher": "sherryabdulqader",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SherryAbdulqader/vscode-local-change-groups.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SherryAbdulqader/vscode-local-change-groups/issues"
+  },
+  "homepage": "https://github.com/SherryAbdulqader/vscode-local-change-groups#readme",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -80,14 +88,86 @@
       }
     ],
     "colors": [
-      { "id": "localChangeGroups.blue", "description": "Blue group color.", "defaults": { "dark": "#75BEFF", "light": "#006AB1", "highContrast": "#75BEFF", "highContrastLight": "#006AB1" } },
-      { "id": "localChangeGroups.green", "description": "Green group color.", "defaults": { "dark": "#89D185", "light": "#1A7F37", "highContrast": "#89D185", "highContrastLight": "#1A7F37" } },
-      { "id": "localChangeGroups.yellow", "description": "Yellow group color.", "defaults": { "dark": "#E2C08D", "light": "#8A6500", "highContrast": "#E2C08D", "highContrastLight": "#8A6500" } },
-      { "id": "localChangeGroups.orange", "description": "Orange group color.", "defaults": { "dark": "#F2A65A", "light": "#A45100", "highContrast": "#F2A65A", "highContrastLight": "#A45100" } },
-      { "id": "localChangeGroups.purple", "description": "Purple group color.", "defaults": { "dark": "#C586C0", "light": "#7A3E9D", "highContrast": "#C586C0", "highContrastLight": "#7A3E9D" } },
-      { "id": "localChangeGroups.pink", "description": "Pink group color.", "defaults": { "dark": "#F28CB1", "light": "#A12E61", "highContrast": "#F28CB1", "highContrastLight": "#A12E61" } },
-      { "id": "localChangeGroups.red", "description": "Red group color.", "defaults": { "dark": "#F48771", "light": "#C42B1C", "highContrast": "#F48771", "highContrastLight": "#C42B1C" } },
-      { "id": "localChangeGroups.gray", "description": "Gray group color.", "defaults": { "dark": "#B8B8B8", "light": "#5F6A6A", "highContrast": "#FFFFFF", "highContrastLight": "#000000" } }
+      {
+        "id": "localChangeGroups.blue",
+        "description": "Blue group color.",
+        "defaults": {
+          "dark": "#75BEFF",
+          "light": "#006AB1",
+          "highContrast": "#75BEFF",
+          "highContrastLight": "#006AB1"
+        }
+      },
+      {
+        "id": "localChangeGroups.green",
+        "description": "Green group color.",
+        "defaults": {
+          "dark": "#89D185",
+          "light": "#1A7F37",
+          "highContrast": "#89D185",
+          "highContrastLight": "#1A7F37"
+        }
+      },
+      {
+        "id": "localChangeGroups.yellow",
+        "description": "Yellow group color.",
+        "defaults": {
+          "dark": "#E2C08D",
+          "light": "#8A6500",
+          "highContrast": "#E2C08D",
+          "highContrastLight": "#8A6500"
+        }
+      },
+      {
+        "id": "localChangeGroups.orange",
+        "description": "Orange group color.",
+        "defaults": {
+          "dark": "#F2A65A",
+          "light": "#A45100",
+          "highContrast": "#F2A65A",
+          "highContrastLight": "#A45100"
+        }
+      },
+      {
+        "id": "localChangeGroups.purple",
+        "description": "Purple group color.",
+        "defaults": {
+          "dark": "#C586C0",
+          "light": "#7A3E9D",
+          "highContrast": "#C586C0",
+          "highContrastLight": "#7A3E9D"
+        }
+      },
+      {
+        "id": "localChangeGroups.pink",
+        "description": "Pink group color.",
+        "defaults": {
+          "dark": "#F28CB1",
+          "light": "#A12E61",
+          "highContrast": "#F28CB1",
+          "highContrastLight": "#A12E61"
+        }
+      },
+      {
+        "id": "localChangeGroups.red",
+        "description": "Red group color.",
+        "defaults": {
+          "dark": "#F48771",
+          "light": "#C42B1C",
+          "highContrast": "#F48771",
+          "highContrastLight": "#C42B1C"
+        }
+      },
+      {
+        "id": "localChangeGroups.gray",
+        "description": "Gray group color.",
+        "defaults": {
+          "dark": "#B8B8B8",
+          "light": "#5F6A6A",
+          "highContrast": "#FFFFFF",
+          "highContrastLight": "#000000"
+        }
+      }
     ],
     "views": {
       "scm": [
@@ -157,11 +237,16 @@
   "scripts": {
     "compile": "tsc -p .",
     "test": "npm run compile && node --test out/test/*.test.js",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "prepackage": "node -e \"require('node:fs').mkdirSync('dist',{recursive:true})\"",
+    "package": "vsce package --out dist/local-change-groups-0.2.0.vsix",
+    "install-extension": "npm run package && code --install-extension dist/local-change-groups-0.2.0.vsix --force",
+    "uninstall-extension": "code --uninstall-extension sherryabdulqader.local-change-groups"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.7.2"
   }
 }

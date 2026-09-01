@@ -1,9 +1,35 @@
+# Repository / tooling metadata (never ship)
 .git/**
+.gitignore
 .github/**
 .vscode/**
+.vscode-test/**
+.gitattributes
+.editorconfig
+.vscodeignore
+
+# Sources and build config (only compiled output ships)
 src/**
 test/**
 tsconfig.json
 *.map
+**/*.map
+**/*.ts
+
+# Dev-only dependencies (this extension has no runtime dependencies)
 node_modules/**
+package-lock.json
+
+# Compiled tests are dev-only
 out/test/**
+
+# Build artifacts
+dist/**
+**/*.vsix
+
+# Local noise / anything that could hold secrets
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
