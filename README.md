@@ -1,6 +1,8 @@
 # Local Change Groups
 
-Local Change Groups adds a private tree to VS Code's Source Control sidebar. It organizes changed files into named, colored groups such as **Local Only**, **Ready for GitHub**, or **Tests**, while keeping an **Ungrouped** section.
+Local Change Groups adds a private tree in its own Activity Bar container. It organizes changed files into named, colored groups such as **Local Only**, **Ready for GitHub**, or **Tests**, while keeping an **Ungrouped** section.
+
+Prefer it beside the built-in **Changes** list? Drag the view's title onto the Source Control icon — VS Code remembers view placement per workspace, so it stays there.
 
 ## Features
 
@@ -70,8 +72,8 @@ npm run install-extension    # package, then install into VS Code
 ```
 
 `npm run install-extension` runs `code --install-extension ... --force`, so it also
-upgrades an already-installed copy. Reload the window afterwards, then open the
-Source Control sidebar to find the **Local Change Groups** view. To remove it:
+upgrades an already-installed copy. Reload the window afterwards, then click the
+**Local Change Groups** icon in the Activity Bar. To remove it:
 
 ```text
 npm run uninstall-extension
@@ -80,7 +82,7 @@ npm run uninstall-extension
 ### What ships in the .vsix
 
 `vscode:prepublish` compiles TypeScript first, and `.vscodeignore` restricts the
-archive to runtime files only — the compiled `out/src/**` output, `package.json`,
+archive to runtime files only — the compiled `out/src/**` output, `resources/`, `package.json`,
 `README.md`, `CHANGELOG.md`, and `LICENSE`. Sources, tests, compiled tests, source
 maps, `tsconfig.json`, `node_modules/`, `package-lock.json`, and repository metadata
 are all excluded. The extension declares no runtime dependencies, so nothing from

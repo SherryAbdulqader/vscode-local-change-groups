@@ -189,11 +189,22 @@
         }
       }
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "localChangeGroups.container",
+          "title": "Local Change Groups",
+          "icon": "resources/change-groups.svg"
+        }
+      ]
+    },
     "views": {
-      "scm": [
+      "localChangeGroups.container": [
         {
           "id": "localChangeGroups.view",
-          "name": "Local Change Groups"
+          "name": "Changes by Group",
+          "icon": "resources/change-groups.svg",
+          "contextualTitle": "Local Change Groups"
         }
       ]
     },
