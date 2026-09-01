@@ -3,6 +3,27 @@ import * as nodePath from 'node:path';
 import type { GitChange, GitRepository } from './api';
 import { GitRunner } from './runner';
 
+/**
+ * The careful part.
+ *
+ * Committing "just this group" means running Git against a subset of paths while
+ * everything else in the index stays exactly as the user left it — including
+ * hunks they staged by hand in files we are not touching. Git is perfectly
+ * capable of doing that. What it will not do is notice when the world moved
+ * underneath us halfway through.
+ *
+ * So the shape of every operation here is: take a snapshot, check the snapshot
+ * still matches the plan the user confirmed, do one step, check again. If a
+ * check fails we stop and say so rather than pressing on and hoping. It is more
+ * paranoid than it looks, and it is that way because the failure mode is
+ * somebody's uncommitted work.
+ *
+ * Two rules worth stating outright:
+ *   - Unrelated index records are compared byte for byte, before and after.
+ *   - A rollback only ever unstages paths *this* operation staged, and only
+ *     while the branch and HEAD are still where we found them.
+ */
+
 export type OperationKind = 'stage' | 'commit' | 'push';
 export interface GroupOperationPlan {
   kind: OperationKind;
@@ -29,7 +50,12 @@ interface GitSnapshot {
 
 const busyRepositories = new Set<string>();
 
-/** Acquires the repository action guard and returns its idempotent release. */
+/**
+ * Claims a repository so two group actions cannot run at once.
+ *
+ * Returns the release, which is safe to call twice — it lives in a `finally`,
+ * and those have a way of running more often than you planned.
+ */
 export function acquireRepositoryLock(repositoryRoot: string): () => void {
   const key = normalizedRoot(repositoryRoot);
   if (busyRepositories.has(key)) throw new Error('Another group action is already running for this repository.');
@@ -41,7 +67,13 @@ export function acquireRepositoryLock(repositoryRoot: string): () => void {
   };
 }
 
-/** Builds a guarded preview without mutating Git state. */
+/**
+ * Works out what an operation *would* do, and refuses early if it should not.
+ *
+ * Nothing here writes anything. The result gets shown to the user, and then
+ * checked again against live state before any Git command runs — because they
+ * might have taken a while to read it.
+ */
 export function buildOperationPlan(repository: GitRepository, changes: GitChange[], kind: OperationKind): GroupOperationPlan {
   if (!repository?.rootUri?.fsPath) throw new Error('A Git repository is required.');
   if (!changes?.length) throw new Error('The selected group has no changes in this repository.');
@@ -68,7 +100,19 @@ export function buildOperationPlan(repository: GitRepository, changes: GitChange
   };
 }
 
-/** Runs one path-scoped group action while leaving unrelated index records untouched. */
+/**
+ * Does the thing, re-checking reality at every step.
+ *
+ * Reads as a lot of assertions for one `git commit`, and that is the point.
+ * Between the user confirming and the commit landing, a watcher, a hook, another
+ * editor window, or a rebase in a terminal can all move the ground. Each check
+ * is here because pressing on regardless could quietly commit or push something
+ * nobody chose.
+ *
+ * The rollback only touches paths this operation staged itself, and only if the
+ * branch and HEAD have not moved. Undoing someone else's staging while trying to
+ * be helpful would be a genuinely terrible outcome.
+ */
 export async function executeGroupOperation(
   repository: GitRepository,
   preview: GroupOperationPlan,
@@ -139,7 +183,7 @@ export async function executeGroupOperation(
   }
 }
 
-/** Expands safe repository-relative paths, including both sides of renames. */
+/** Turns changes into repo-relative paths, keeping both sides of a rename. */
 export function expandChangePaths(repositoryRoot: string, changes: GitChange[]): string[] {
   const result = new Set<string>();
   for (const change of changes) {
