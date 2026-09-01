@@ -32,6 +32,16 @@ class ControlledMemento extends MemoryMemento {
   }
 }
 
+class CountingMemento extends MemoryMemento {
+  public calls = 0;
+
+  /** Counts persisted writes without blocking any of them. */
+  public override async update(key: string, value: unknown): Promise<void> {
+    this.calls += 1;
+    await super.update(key, value);
+  }
+}
+
 test('store creates, assigns, and unassigns groups', async () => {
   const memory = new MemoryMemento();
   const store = new GroupStore(memory);
@@ -96,4 +106,59 @@ test('rename move and remove clear every alias atomically', async () => {
   assert.equal(store.getAssignment('new'), second.id);
   await store.unassignAll(['new', 'old']);
   assert.equal(store.getAssignment('new'), undefined);
+});
+
+test('createGroup fills the new group in a single write', async () => {
+  const memory = new CountingMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Tests', 'green', [
+    { fileKey: 'repo::a.ts', assignmentKeys: ['repo::a.ts'] },
+    { fileKey: 'repo::b.ts', assignmentKeys: ['repo::old.ts', 'repo::b.ts'] }
+  ]);
+  assert.equal(memory.calls, 1);
+  assert.equal(store.getAssignment('repo::a.ts'), group.id);
+  assert.equal(store.getAssignment('repo::b.ts'), group.id);
+  assert.equal(store.getAssignment('repo::old.ts'), undefined);
+});
+
+test('createGroup rejects a duplicate name without assigning any file', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  await store.createGroup('Tests');
+  await assert.rejects(
+    store.createGroup('Tests', 'red', [{ fileKey: 'repo::a.ts', assignmentKeys: ['repo::a.ts'] }]),
+    /already exists/
+  );
+  assert.equal(store.getAssignment('repo::a.ts'), undefined);
+});
+
+test('moveAssignments moves many files and clears aliases in one write', async () => {
+  const memory = new CountingMemento();
+  const store = new GroupStore(memory);
+  const first = await store.createGroup('Local Only');
+  const second = await store.createGroup('Ready');
+  await store.assign('repo::a.ts', first.id);
+  const before = memory.calls;
+  await store.moveAssignments([
+    { fileKey: 'repo::a.ts', assignmentKeys: ['repo::a.ts'] },
+    { fileKey: 'repo::b.ts', assignmentKeys: ['repo::renamed.ts', 'repo::b.ts'] }
+  ], second.id);
+  assert.equal(memory.calls - before, 1);
+  assert.equal(store.getAssignment('repo::a.ts'), second.id);
+  assert.equal(store.getAssignment('repo::b.ts'), second.id);
+  assert.equal(store.getAssignment('repo::renamed.ts'), undefined);
+});
+
+test('moveAssignments rejects an empty batch and an unknown group', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Local Only');
+  await assert.rejects(store.moveAssignments([], group.id), /At least one file/);
+  await assert.rejects(
+    store.moveAssignments([{ fileKey: ' ', assignmentKeys: ['repo::a.ts'] }], group.id),
+    /Valid file keys/
+  );
+  await assert.rejects(
+    store.moveAssignments([{ fileKey: 'repo::a.ts', assignmentKeys: ['repo::a.ts'] }], 'missing'),
+    /Group not found/
+  );
+  assert.equal(store.getAssignment('repo::a.ts'), undefined);
 });

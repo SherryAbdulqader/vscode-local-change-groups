@@ -76,20 +76,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (changes.length === 0) return;
         const group = await pickGroup(store, `Assign or move ${describeCount(changes.length)}`);
         if (!group) return;
-        for (const change of changes) {
-          await store.moveAssignment(change.assignmentKeys, change.fileKey, group.id);
-        }
+        await store.moveAssignments(changes, group.id);
         provider.refresh();
         output.appendLine(`Assigned ${describeCount(changes.length)} to ${group.name}`);
       })),
       vscode.commands.registerCommand('localChangeGroups.removeFromGroup', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
         const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select changed files');
         if (changes.length === 0) return;
-        for (const change of changes) {
-          await store.unassignAll(change.assignmentKeys);
-        }
+        await store.unassignAll(changes.flatMap(change => change.assignmentKeys));
         provider.refresh();
         output.appendLine(`Returned ${describeCount(changes.length)} to Ungrouped`);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.createGroupFromSelection', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
+        const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select files for the new group');
+        if (changes.length === 0) return;
+        const name = await vscode.window.showInputBox({
+          title: 'New Group from Selection',
+          prompt: `Name for a group holding ${describeCount(changes.length)} (stored only in this workspace)`,
+          validateInput: value => value.trim() ? undefined : 'Enter a group name.'
+        });
+        if (name === undefined) return;
+        const color = await pickColor();
+        if (!color) return;
+        const group = await store.createGroup(name, color, changes);
+        provider.refresh();
+        output.appendLine(`Created ${group.name} holding ${describeCount(changes.length)}`);
       })),
       vscode.commands.registerCommand('localChangeGroups.openChange', (node?: FileNode) => runCommand(output, async () => {
         if (!node?.displayChange) {

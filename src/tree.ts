@@ -10,6 +10,12 @@ import { GroupStore } from './store';
 export { collectChanges } from './path';
 export { directoryLabel, statusLabel } from './presentation';
 
+/** Collapses bursts of Git status events into one repaint. */
+const REFRESH_DEBOUNCE_MS = 120;
+
+/** Bucket key standing in for the Ungrouped section, never a real group id. */
+const UNGROUPED_KEY = '';
+
 export type TreeNode = RepositoryNode | GroupNode | FileNode;
 
 export class RepositoryNode {
@@ -41,6 +47,8 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   private readonly changedEmitter = new vscode.EventEmitter<TreeNode | undefined | void>();
   private readonly repositorySubscriptions = new Map<GitRepository, vscode.Disposable>();
   private readonly apiSubscriptions: vscode.Disposable[] = [];
+  private readonly groupingCache = new Map<GitRepository, Map<string, DisplayChange[]>>();
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   public readonly onDidChangeTreeData = this.changedEmitter.event;
 
   /** Creates the provider and subscribes to public Git change events. */
@@ -68,6 +76,8 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
 
   /** Releases Git and tree event subscriptions. */
   public dispose(): void {
+    this.cancelScheduledRefresh();
+    this.groupingCache.clear();
     this.changedEmitter.dispose();
     for (const subscription of this.repositorySubscriptions.values()) {
       subscription.dispose();
@@ -77,8 +87,10 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     }
   }
 
-  /** Rebuilds the visible tree from current Git state. */
+  /** Discards cached grouping and rebuilds the visible tree from Git state. */
   public refresh(): void {
+    this.cancelScheduledRefresh();
+    this.groupingCache.clear();
     this.changedEmitter.fire();
   }
 
@@ -128,7 +140,9 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
 
   /** Returns every changed file currently known across repositories. */
   public getAllChanges(): DisplayChange[] {
-    return (this.gitApi?.repositories ?? []).flatMap(repository => collectChanges(repository));
+    return (this.gitApi?.repositories ?? [])
+      .flatMap(repository => [...this.grouping(repository).values()])
+      .flat();
   }
 
   /** Returns the currently visible changes assigned to a repository-scoped group. */
@@ -196,15 +210,54 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   /** Watches one repository for status changes. */
   private watchRepository(repository: GitRepository): void {
     if (!this.repositorySubscriptions.has(repository)) {
-      this.repositorySubscriptions.set(repository, repository.state.onDidChange(() => this.refresh()));
+      this.repositorySubscriptions.set(repository, repository.state.onDidChange(() => this.scheduleRefresh()));
     }
   }
 
-  /** Filters repository changes by their private group assignment. */
+  /** Coalesces rapid Git status events into a single delayed repaint. */
+  private scheduleRefresh(): void {
+    this.cancelScheduledRefresh();
+    this.refreshTimer = setTimeout(() => this.refresh(), REFRESH_DEBOUNCE_MS);
+  }
+
+  /** Drops a pending repaint so it cannot fire after a newer one. */
+  private cancelScheduledRefresh(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+  }
+
+  /** Returns the changes assigned to one group, from the per-repaint grouping. */
   private changesForGroup(repository: GitRepository, groupId: string | undefined): DisplayChange[] {
-    return collectChanges(repository)
-      .filter(change => assignedGroupId(change, key => this.store.getAssignment(key)) === groupId)
-      .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    return this.grouping(repository).get(groupId ?? UNGROUPED_KEY) ?? [];
+  }
+
+  /**
+   * Buckets a repository's changes by group once per repaint. Every row of the
+   * tree reads this, so scanning and normalizing paths happens a single time
+   * instead of once per group header and again per group body.
+   */
+  private grouping(repository: GitRepository): Map<string, DisplayChange[]> {
+    const cached = this.groupingCache.get(repository);
+    if (cached) {
+      return cached;
+    }
+    const grouped = new Map<string, DisplayChange[]>();
+    for (const change of collectChanges(repository)) {
+      const key = assignedGroupId(change, assignment => this.store.getAssignment(assignment)) ?? UNGROUPED_KEY;
+      const bucket = grouped.get(key);
+      if (bucket) {
+        bucket.push(change);
+      } else {
+        grouped.set(key, [change]);
+      }
+    }
+    for (const bucket of grouped.values()) {
+      bucket.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    }
+    this.groupingCache.set(repository, grouped);
+    return grouped;
   }
 }
 

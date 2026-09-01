@@ -8,7 +8,7 @@ Prefer it beside the built-in **Changes** list? Drag the view's title onto the S
 
 - Create, rename, recolor, and delete private groups.
 - Drag files onto a group to assign them, onto **Ungrouped** to remove them, or onto a file row to join that row's group. Files dragged in from the Explorer or the built-in **Changes** list work too.
-- Select many files with `Ctrl`/`Shift` and assign, move, or remove them in one action.
+- Select many files with `Ctrl`/`Shift` and assign, move, or remove them in one action, or turn the selection straight into a new group.
 - Read file rows the way you read the built-in **Changes** list: file-theme icon, file name, dim folder path, and a single-letter status badge (`M`, `A`, `D`, `R`, `U`, `C`) in the matching Git color.
 - Assign, move, and remove changed files through tree menus or the Command Palette.
 - Choose from eight theme-aware colors for group dots. Set `localChangeGroups.fileColors` to `group` to tint file rows by their group instead of by Git status.
@@ -66,7 +66,7 @@ which is pinned as a dev dependency:
 
 ```text
 npm install
-npm test                     # 36 tests
+npm test                     # 40 tests
 npm run package              # -> dist/local-change-groups-<version>.vsix
 npm run install-extension    # package, then install into VS Code
 ```

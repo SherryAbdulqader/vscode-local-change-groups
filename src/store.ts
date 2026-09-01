@@ -8,6 +8,12 @@ export interface MementoLike {
   update(key: string, value: unknown): Thenable<void>;
 }
 
+/** One file's current assignment key plus any rename aliases to clear. */
+export interface AssignmentTarget {
+  fileKey: string;
+  assignmentKeys: readonly string[];
+}
+
 /** Manages private group metadata in VS Code workspace state. */
 export class GroupStore {
   private state: PersistedState;
@@ -28,13 +34,19 @@ export class GroupStore {
     return this.state.assignments[fileKey];
   }
 
-  /** Creates and persists a uniquely named group. */
-  public async createGroup(name: string, color: GroupColor = DEFAULT_GROUP_COLOR): Promise<LocalGroup> {
+  /** Creates a uniquely named group and optionally fills it in the same write. */
+  public async createGroup(
+    name: string,
+    color: GroupColor = DEFAULT_GROUP_COLOR,
+    assign: readonly AssignmentTarget[] = []
+  ): Promise<LocalGroup> {
     if (!isGroupColor(color)) throw new Error('Select a supported group color.');
+    validateTargets(assign);
     const group = { id: randomUUID(), name: normalizeGroupName(name), color };
     return this.mutate(next => {
       this.validateUniqueName(next, group.name);
       next.groups.push(group);
+      applyAssignments(next, assign, group.id);
       return { ...group };
     });
   }
@@ -75,11 +87,16 @@ export class GroupStore {
 
   /** Clears rename aliases and assigns only the current path in one write. */
   public async moveAssignment(fileKeys: string[], currentKey: string, groupId: string): Promise<void> {
-    if (!fileKeys.length || fileKeys.some(key => !key.trim()) || !currentKey.trim()) throw new Error('Valid file keys are required.');
+    await this.moveAssignments([{ fileKey: currentKey, assignmentKeys: fileKeys }], groupId);
+  }
+
+  /** Moves many files into one group in a single persisted write. */
+  public async moveAssignments(targets: readonly AssignmentTarget[], groupId: string): Promise<void> {
+    if (!targets.length) throw new Error('At least one file is required.');
+    validateTargets(targets);
     await this.mutate(next => {
       this.requireGroup(next, groupId);
-      for (const key of fileKeys) delete next.assignments[key];
-      next.assignments[currentKey] = groupId;
+      applyAssignments(next, targets, groupId);
     });
   }
 
@@ -125,5 +142,22 @@ export class GroupStore {
   private validateUniqueName(state: PersistedState, name: string, exceptGroupId?: string): void {
     const duplicate = state.groups.some(group => group.id !== exceptGroupId && group.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0);
     if (duplicate) throw new Error('A group with that name already exists.');
+  }
+}
+
+/** Rejects targets that do not name a current file plus its rename aliases. */
+function validateTargets(targets: readonly AssignmentTarget[]): void {
+  for (const target of targets) {
+    if (!target?.fileKey?.trim() || !target.assignmentKeys?.length || target.assignmentKeys.some(key => !key.trim())) {
+      throw new Error('Valid file keys are required.');
+    }
+  }
+}
+
+/** Clears rename aliases and points every current path at one group. */
+function applyAssignments(state: PersistedState, targets: readonly AssignmentTarget[], groupId: string): void {
+  for (const target of targets) {
+    for (const key of target.assignmentKeys) delete state.assignments[key];
+    state.assignments[target.fileKey] = groupId;
   }
 }

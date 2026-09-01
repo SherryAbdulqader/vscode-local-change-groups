@@ -55,6 +55,11 @@
         "title": "Local Change Groups: Delete Group"
       },
       {
+        "command": "localChangeGroups.createGroupFromSelection",
+        "title": "Local Change Groups: New Group from Selection",
+        "icon": "$(new-folder)"
+      },
+      {
         "command": "localChangeGroups.assignToGroup",
         "title": "Local Change Groups: Assign or Move Files",
         "icon": "$(arrow-right)"
@@ -261,6 +266,11 @@
           "command": "localChangeGroups.removeFromGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.file.grouped",
           "group": "inline@2"
+        },
+        {
+          "command": "localChangeGroups.createGroupFromSelection",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "group": "group@0"
         },
         {
           "command": "localChangeGroups.assignToGroup",

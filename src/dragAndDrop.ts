@@ -60,12 +60,10 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
       if (moved.length === 0) {
         return;
       }
-      for (const change of moved) {
-        if (destination.groupId) {
-          await this.store.moveAssignment(change.assignmentKeys, change.fileKey, destination.groupId);
-        } else {
-          await this.store.unassignAll(change.assignmentKeys);
-        }
+      if (destination.groupId) {
+        await this.store.moveAssignments(moved, destination.groupId);
+      } else {
+        await this.store.unassignAll(moved.flatMap(change => change.assignmentKeys));
       }
       this.provider.refresh();
       const name = destination.groupId

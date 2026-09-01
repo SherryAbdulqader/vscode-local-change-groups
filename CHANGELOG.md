@@ -19,8 +19,17 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a row outside the selection still acts on that row alone.
 - `localChangeGroups.fileColors` setting, choosing whether file rows are tinted by
   Git status (default) or by their group color.
+- **New Group from Selection**, which names, colors, and fills a group from the
+  selected rows in one step and one persisted write.
 
 ### Changed
+- Changes are now bucketed by group once per repaint instead of being re-scanned
+  for every group header and again for every group body. Path normalization used
+  to run roughly `2 × groups × files` times per render; it now runs once per file.
+- Git status events are debounced by 120 ms, so a save or a branch switch causes
+  one repaint rather than a burst of them.
+- Assigning, removing, or dropping many files persists a single write instead of
+  one write per file.
 - File rows now mirror the built-in **Changes** list: the file-icon theme's icon,
   the file name, its folder as dim description text, and a single-letter status
   badge (`M`, `A`, `D`, `R`, `U`, `C`, …) in the matching Git decoration color.
