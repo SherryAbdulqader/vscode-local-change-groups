@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { ChangeDecorationProvider } from './decoration';
+import { ChangeGroupsDragAndDropController } from './dragAndDrop';
 import { getGitApi } from './git';
 import { GroupStore } from './store';
 import { ChangeGroupsTreeProvider, DisplayChange, FileNode, GroupNode } from './tree';
@@ -12,9 +14,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const store = new GroupStore(context.workspaceState);
     const gitApi = await getGitApi();
     const provider = new ChangeGroupsTreeProvider(gitApi, store);
-    const view = vscode.window.createTreeView('localChangeGroups.view', { treeDataProvider: provider, showCollapseAll: true });
+    const decorations = new ChangeDecorationProvider();
+    const dragAndDrop = new ChangeGroupsDragAndDropController(provider, store, message => output.appendLine(message));
+    const view = vscode.window.createTreeView('localChangeGroups.view', {
+      treeDataProvider: provider,
+      dragAndDropController: dragAndDrop,
+      canSelectMany: true,
+      showCollapseAll: true
+    });
 
-    context.subscriptions.push(output, provider, view);
+    context.subscriptions.push(output, provider, decorations, view);
+    context.subscriptions.push(vscode.window.registerFileDecorationProvider(decorations));
     context.subscriptions.push(
       vscode.commands.registerCommand('localChangeGroups.refresh', () => provider.refresh()),
       vscode.commands.registerCommand('localChangeGroups.createGroup', () => runCommand(output, async () => {
@@ -61,21 +71,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         provider.refresh();
         output.appendLine(`Deleted local group: ${group.name}`);
       })),
-      vscode.commands.registerCommand('localChangeGroups.assignToGroup', (node?: FileNode) => runCommand(output, async () => {
-        const change = node?.displayChange ?? await pickChange(provider, 'Select a changed file');
-        if (!change) return;
-        const group = await pickGroup(store, 'Assign or move to group');
+      vscode.commands.registerCommand('localChangeGroups.assignToGroup', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
+        const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select changed files');
+        if (changes.length === 0) return;
+        const group = await pickGroup(store, `Assign or move ${describeCount(changes.length)}`);
         if (!group) return;
-        await store.moveAssignment(change.assignmentKeys, change.fileKey, group.id);
+        for (const change of changes) {
+          await store.moveAssignment(change.assignmentKeys, change.fileKey, group.id);
+        }
         provider.refresh();
-        output.appendLine(`Assigned ${change.relativePath} to ${group.name}`);
+        output.appendLine(`Assigned ${describeCount(changes.length)} to ${group.name}`);
       })),
-      vscode.commands.registerCommand('localChangeGroups.removeFromGroup', (node?: FileNode) => runCommand(output, async () => {
-        const change = node?.displayChange ?? await pickChange(provider, 'Select a changed file');
-        if (!change) return;
-        await store.unassignAll(change.assignmentKeys);
+      vscode.commands.registerCommand('localChangeGroups.removeFromGroup', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
+        const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select changed files');
+        if (changes.length === 0) return;
+        for (const change of changes) {
+          await store.unassignAll(change.assignmentKeys);
+        }
         provider.refresh();
-        output.appendLine(`Returned ${change.relativePath} to Ungrouped`);
+        output.appendLine(`Returned ${describeCount(changes.length)} to Ungrouped`);
       })),
       vscode.commands.registerCommand('localChangeGroups.openChange', (node?: FileNode) => runCommand(output, async () => {
         if (!node?.displayChange) {
@@ -153,6 +167,33 @@ async function runCommand(output: vscode.OutputChannel, action: () => Promise<vo
   }
 }
 
+/**
+ * Resolves the file rows a command should act on, preferring the whole
+ * multi-selection whenever the invoked row is part of it.
+ */
+export function selectedChanges(
+  node: FileNode | undefined,
+  nodes: readonly (FileNode | unknown)[] | undefined,
+  view: Pick<vscode.TreeView<unknown>, 'selection'>
+): DisplayChange[] | undefined {
+  const fromArgument = (nodes ?? []).filter((candidate): candidate is FileNode => candidate instanceof FileNode);
+  const candidates = fromArgument.length > 0
+    ? fromArgument
+    : (view.selection ?? []).filter((candidate): candidate is FileNode => candidate instanceof FileNode);
+  const includesInvoked = !node || candidates.some(candidate => candidate.displayChange.fileKey === node.displayChange.fileKey);
+  const chosen = includesInvoked && candidates.length > 0 ? candidates : node ? [node] : [];
+  if (chosen.length === 0) {
+    return undefined;
+  }
+  const byKey = new Map(chosen.map(item => [item.displayChange.fileKey, item.displayChange]));
+  return [...byKey.values()];
+}
+
+/** Describes a file count for log lines and prompts. */
+function describeCount(count: number): string {
+  return `${count} file${count === 1 ? '' : 's'}`;
+}
+
 /** Prompts for one configured local group. */
 async function pickGroup(store: GroupStore, placeHolder: string) {
   if (!placeHolder.trim()) {
@@ -170,15 +211,15 @@ async function pickGroup(store: GroupStore, placeHolder: string) {
   return selection?.group;
 }
 
-/** Prompts for one changed file across all open repositories. */
-async function pickChange(provider: ChangeGroupsTreeProvider, placeHolder: string): Promise<DisplayChange | undefined> {
+/** Prompts for one or more changed files across all open repositories. */
+async function pickChanges(provider: ChangeGroupsTreeProvider, placeHolder: string): Promise<DisplayChange[]> {
   if (!placeHolder.trim()) {
     throw new Error('A picker prompt is required.');
   }
   const changes = provider.getAllChanges();
   if (changes.length === 0) {
     void vscode.window.showInformationMessage('No Git changes are available.');
-    return undefined;
+    return [];
   }
   const selection = await vscode.window.showQuickPick(
     changes.map(change => ({
@@ -186,9 +227,9 @@ async function pickChange(provider: ChangeGroupsTreeProvider, placeHolder: strin
       description: `${change.area} · ${change.repository.rootUri.fsPath}`,
       change
     })),
-    { placeHolder, matchOnDescription: true }
+    { placeHolder, matchOnDescription: true, canPickMany: true }
   );
-  return selection?.change;
+  return (selection ?? []).map(item => item.change);
 }
 
 /** Prompts for a predefined theme-aware group color. */

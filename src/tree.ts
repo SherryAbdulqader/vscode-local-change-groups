@@ -1,11 +1,14 @@
 import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
+import { changeDecorationUri } from './decoration';
 import { GitApi, GitRepository } from './git';
 import { LocalGroup } from './model';
 import { assignedGroupId, collectChanges, CollectedChange } from './path';
+import { directoryLabel, groupColorId, statusLabel } from './presentation';
 import { GroupStore } from './store';
 
 export { collectChanges } from './path';
+export { directoryLabel, statusLabel } from './presentation';
 
 export type TreeNode = RepositoryNode | GroupNode | FileNode;
 
@@ -82,60 +85,45 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   /** Returns the VS Code presentation for a tree node. */
   public getTreeItem(element: TreeNode): vscode.TreeItem {
     if (element instanceof RepositoryNode) {
-      const label = nodePath.basename(element.repository.rootUri.fsPath) || element.repository.rootUri.fsPath;
-      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
-      item.contextValue = 'localChangeGroups.repository';
-      item.iconPath = new vscode.ThemeIcon('repo');
-      item.description = element.repository.rootUri.fsPath;
-      return item;
+      return this.repositoryItem(element);
     }
-
     if (element instanceof GroupNode) {
-      const name = element.group?.name ?? 'Ungrouped';
-      const count = this.changesForGroup(element.repository, element.group?.id).length;
-      const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Expanded);
-      item.description = String(count);
-      item.contextValue = element.group ? 'localChangeGroups.group' : 'localChangeGroups.ungrouped';
-      item.iconPath = new vscode.ThemeIcon(
-        element.group ? 'folder' : 'folder-opened',
-        element.group ? groupThemeColor(element.group.color) : undefined
-      );
-      return item;
+      return this.groupItem(element);
     }
-
-    const { displayChange } = element;
-    const item = new vscode.TreeItem(nodePath.basename(displayChange.relativePath), vscode.TreeItemCollapsibleState.None);
-    item.description = `${displayChange.area} · ${statusLabel(displayChange.change.status)}`;
-    item.tooltip = `${displayChange.relativePath}\n${item.description}`;
-    item.resourceUri = displayChange.change.uri;
-    item.contextValue = element.groupId ? 'localChangeGroups.file.grouped' : 'localChangeGroups.file.ungrouped';
-    item.iconPath = element.groupColor
-      ? new vscode.ThemeIcon(statusIconName(displayChange.change.status), groupThemeColor(element.groupColor))
-      : statusIcon(displayChange.change.status);
-    item.command = {
-      command: 'localChangeGroups.openChange',
-      title: 'Open Change',
-      arguments: [element]
-    };
-    return item;
+    return this.fileItem(element);
   }
 
   /** Returns repository, group, or file children. */
   public getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
-      return (this.gitApi?.repositories ?? []).map(repository => new RepositoryNode(repository));
+      const repositories = this.gitApi?.repositories ?? [];
+      return repositories.length === 1
+        ? this.groupNodes(repositories[0])
+        : repositories.map(repository => new RepositoryNode(repository));
     }
     if (element instanceof RepositoryNode) {
-      return [
-        ...this.store.getGroups().map(group => new GroupNode(element.repository, group)),
-        new GroupNode(element.repository, undefined)
-      ];
+      return this.groupNodes(element.repository);
     }
     if (element instanceof GroupNode) {
       return this.changesForGroup(element.repository, element.group?.id)
         .map(change => new FileNode(change, element.group?.id, element.group?.color));
     }
     return [];
+  }
+
+  /** Returns the parent node so the view can reveal a file row. */
+  public getParent(element: TreeNode): TreeNode | undefined {
+    if (element instanceof FileNode) {
+      const group = element.groupId
+        ? this.store.getGroups().find(candidate => candidate.id === element.groupId)
+        : undefined;
+      return new GroupNode(element.displayChange.repository, group);
+    }
+    if (element instanceof GroupNode) {
+      const repositories = this.gitApi?.repositories ?? [];
+      return repositories.length === 1 ? undefined : new RepositoryNode(element.repository);
+    }
+    return undefined;
   }
 
   /** Returns every changed file currently known across repositories. */
@@ -147,6 +135,62 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   public getGroupChanges(node: GroupNode): DisplayChange[] {
     if (!node.group) throw new Error('Select a named group.');
     return this.changesForGroup(node.repository, node.group.id);
+  }
+
+  /** Builds the group rows shown under one repository. */
+  private groupNodes(repository: GitRepository): TreeNode[] {
+    return [
+      ...this.store.getGroups().map(group => new GroupNode(repository, group)),
+      new GroupNode(repository, undefined)
+    ];
+  }
+
+  /** Builds the repository row shown when several repositories are open. */
+  private repositoryItem(element: RepositoryNode): vscode.TreeItem {
+    const label = nodePath.basename(element.repository.rootUri.fsPath) || element.repository.rootUri.fsPath;
+    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
+    item.id = `repository:${element.repository.rootUri.toString()}`;
+    item.contextValue = 'localChangeGroups.repository';
+    item.iconPath = new vscode.ThemeIcon('repo');
+    item.description = element.repository.rootUri.fsPath;
+    return item;
+  }
+
+  /** Builds a group header row styled after the Source Control section headers. */
+  private groupItem(element: GroupNode): vscode.TreeItem {
+    const changes = this.changesForGroup(element.repository, element.group?.id);
+    const name = element.group?.name ?? 'Ungrouped';
+    const item = new vscode.TreeItem(name, changes.length
+      ? vscode.TreeItemCollapsibleState.Expanded
+      : vscode.TreeItemCollapsibleState.Collapsed);
+    item.id = `group:${element.repository.rootUri.toString()}:${element.group?.id ?? 'ungrouped'}`;
+    item.description = String(changes.length);
+    item.tooltip = element.group
+      ? `${name} — ${changes.length} change${changes.length === 1 ? '' : 's'}\nDrop files here to assign them.`
+      : 'Changes that belong to no group\nDrop files here to remove them from their group.';
+    item.contextValue = element.group ? 'localChangeGroups.group' : 'localChangeGroups.ungrouped';
+    item.iconPath = new vscode.ThemeIcon(
+      element.group ? 'circle-filled' : 'circle-outline',
+      element.group ? groupThemeColor(element.group.color) : undefined
+    );
+    return item;
+  }
+
+  /** Builds a file row that mirrors the Source Control changes list. */
+  private fileItem(element: FileNode): vscode.TreeItem {
+    const { displayChange } = element;
+    const item = new vscode.TreeItem(nodePath.basename(displayChange.relativePath), vscode.TreeItemCollapsibleState.None);
+    item.id = `file:${element.groupId ?? 'ungrouped'}:${displayChange.fileKey}`;
+    item.description = directoryLabel(displayChange.relativePath);
+    item.tooltip = `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
+    item.resourceUri = changeDecorationUri(displayChange.change.uri, displayChange.change.status, element.groupColor);
+    item.contextValue = element.groupId ? 'localChangeGroups.file.grouped' : 'localChangeGroups.file.ungrouped';
+    item.command = {
+      command: 'localChangeGroups.openChange',
+      title: 'Open Change',
+      arguments: [element]
+    };
+    return item;
   }
 
   /** Watches one repository for status changes. */
@@ -164,44 +208,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   }
 }
 
-/** Returns a concise user-facing label for a Git status value. */
-export function statusLabel(status: number): string {
-  const labels: Record<number, string> = {
-    0: 'Modified', 1: 'Added', 2: 'Deleted', 3: 'Renamed', 4: 'Copied',
-    5: 'Modified', 6: 'Deleted', 7: 'Untracked', 8: 'Ignored', 9: 'Added',
-    10: 'Renamed', 11: 'Type changed', 12: 'Conflict', 13: 'Conflict',
-    14: 'Conflict', 15: 'Conflict', 16: 'Conflict', 17: 'Conflict', 18: 'Conflict'
-  };
-  return labels[status] ?? 'Changed';
-}
-
-/** Returns a themed icon without defining custom colors. */
-function statusIcon(status: number): vscode.ThemeIcon {
-  if ([2, 6].includes(status)) {
-    return new vscode.ThemeIcon('diff-removed', new vscode.ThemeColor('gitDecoration.deletedResourceForeground'));
-  }
-  if ([1, 7, 9].includes(status)) {
-    return new vscode.ThemeIcon('diff-added', new vscode.ThemeColor('gitDecoration.addedResourceForeground'));
-  }
-  if ([3, 10].includes(status)) {
-    return new vscode.ThemeIcon('diff-renamed', new vscode.ThemeColor('gitDecoration.renamedResourceForeground'));
-  }
-  if (status >= 12) {
-    return new vscode.ThemeIcon('warning', new vscode.ThemeColor('gitDecoration.conflictingResourceForeground'));
-  }
-  return new vscode.ThemeIcon('diff-modified', new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'));
-}
-
-/** Returns the status-specific icon name used by colored group members. */
-function statusIconName(status: number): string {
-  if ([2, 6].includes(status)) return 'diff-removed';
-  if ([1, 7, 9].includes(status)) return 'diff-added';
-  if ([3, 10].includes(status)) return 'diff-renamed';
-  if (status >= 12) return 'warning';
-  return 'diff-modified';
-}
-
 /** Maps a stored palette key to its contributed theme color. */
 function groupThemeColor(color: LocalGroup['color']): vscode.ThemeColor {
-  return new vscode.ThemeColor(`localChangeGroups.${color}`);
+  return new vscode.ThemeColor(groupColorId(color));
 }

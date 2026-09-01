@@ -3,6 +3,28 @@
 All notable changes to the Local Change Groups extension are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0]
+
+### Added
+- Drag and drop: drag one or more files onto a group to assign them, onto
+  **Ungrouped** to remove them, or onto any file row to join that row's group.
+  Files dragged in from the Explorer or the built-in **Changes** list are matched
+  against known changes and assigned the same way.
+- Multi-select: the view enables `canSelectMany`, and **Assign or Move Files** and
+  **Remove Files from Group** act on the whole selection. Choosing the command from
+  a row outside the selection still acts on that row alone.
+- `localChangeGroups.fileColors` setting, choosing whether file rows are tinted by
+  Git status (default) or by their group color.
+
+### Changed
+- File rows now mirror the built-in **Changes** list: the file-icon theme's icon,
+  the file name, its folder as dim description text, and a single-letter status
+  badge (`M`, `A`, `D`, `R`, `U`, `C`, …) in the matching Git decoration color.
+  Badges are drawn on a private URI scheme, so they never appear in other views.
+- Group rows show a colored dot instead of a folder icon, and empty groups start
+  collapsed.
+- A single open repository no longer renders a redundant repository row.
+
 ## [0.2.0]
 
 ### Added

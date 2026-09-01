@@ -2,7 +2,7 @@
   "name": "local-change-groups",
   "displayName": "Local Change Groups",
   "description": "Privately organize, color, and safely publish groups of Git changes.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "sherryabdulqader",
   "license": "MIT",
   "repository": {
@@ -56,11 +56,13 @@
       },
       {
         "command": "localChangeGroups.assignToGroup",
-        "title": "Local Change Groups: Assign or Move File"
+        "title": "Local Change Groups: Assign or Move Files",
+        "icon": "$(arrow-right)"
       },
       {
         "command": "localChangeGroups.removeFromGroup",
-        "title": "Local Change Groups: Remove File from Group"
+        "title": "Local Change Groups: Remove Files from Group",
+        "icon": "$(close)"
       },
       {
         "command": "localChangeGroups.refresh",
@@ -169,6 +171,24 @@
         }
       }
     ],
+    "configuration": {
+      "title": "Local Change Groups",
+      "properties": {
+        "localChangeGroups.fileColors": {
+          "type": "string",
+          "enum": [
+            "status",
+            "group"
+          ],
+          "enumDescriptions": [
+            "Color file rows by Git status, matching the Source Control view.",
+            "Color file rows by the group that owns them."
+          ],
+          "default": "status",
+          "description": "Chooses whether file rows are tinted by Git status or by their group color."
+        }
+      }
+    },
     "views": {
       "scm": [
         {
@@ -230,6 +250,21 @@
           "command": "localChangeGroups.removeFromGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.file.grouped",
           "group": "inline@2"
+        },
+        {
+          "command": "localChangeGroups.assignToGroup",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "group": "group@1"
+        },
+        {
+          "command": "localChangeGroups.removeFromGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.file.grouped",
+          "group": "group@2"
+        },
+        {
+          "command": "localChangeGroups.openChange",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "group": "navigation@1"
         }
       ]
     }
@@ -239,8 +274,8 @@
     "test": "npm run compile && node --test out/test/*.test.js",
     "vscode:prepublish": "npm run compile",
     "prepackage": "node -e \"require('node:fs').mkdirSync('dist',{recursive:true})\"",
-    "package": "vsce package --out dist/local-change-groups-0.2.0.vsix",
-    "install-extension": "npm run package && code --install-extension dist/local-change-groups-0.2.0.vsix --force",
+    "package": "vsce package --out dist/local-change-groups-0.3.0.vsix",
+    "install-extension": "npm run package && code --install-extension dist/local-change-groups-0.3.0.vsix --force",
     "uninstall-extension": "code --uninstall-extension sherryabdulqader.local-change-groups"
   },
   "devDependencies": {

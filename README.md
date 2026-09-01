@@ -5,8 +5,11 @@ Local Change Groups adds a private tree to VS Code's Source Control sidebar. It 
 ## Features
 
 - Create, rename, recolor, and delete private groups.
+- Drag files onto a group to assign them, onto **Ungrouped** to remove them, or onto a file row to join that row's group. Files dragged in from the Explorer or the built-in **Changes** list work too.
+- Select many files with `Ctrl`/`Shift` and assign, move, or remove them in one action.
+- Read file rows the way you read the built-in **Changes** list: file-theme icon, file name, dim folder path, and a single-letter status badge (`M`, `A`, `D`, `R`, `U`, `C`) in the matching Git color.
 - Assign, move, and remove changed files through tree menus or the Command Palette.
-- Choose from eight theme-aware icon colors. A group's folder and member-file icons use the same color.
+- Choose from eight theme-aware colors for group dots. Set `localChangeGroups.fileColors` to `group` to tint file rows by their group instead of by Git status.
 - Stage one group, commit one group, or commit and push one group with safety checks.
 - Open tracked changes in VS Code's Git diff and untracked files in the editor.
 - Refresh automatically from VS Code's built-in Git extension.
@@ -36,7 +39,7 @@ It is disabled in untrusted and virtual workspaces.
 ## Limitations
 
 - This is a separate view; VS Code does not let extensions rearrange or color rows in the built-in **Changes** list.
-- VS Code does not expose arbitrary tree-row background highlighting. Colors apply to group and member-file icons.
+- VS Code does not expose arbitrary tree-row background highlighting. Colors apply to the group dot and, when `localChangeGroups.fileColors` is `group`, to file rows.
 - A group is metadata, not a permanent Git staging area. Every Git action re-checks live repository state.
 - Another process or Git hook can still edit repository state in the tiny interval between checks. Post-commit verification blocks push when the result differs and asks you to inspect it.
 - Partially staged group files are blocked because their hunks cannot be safely reconstructed. Unrelated partial staging is allowed and preserved byte-for-byte in the index.
@@ -61,7 +64,7 @@ which is pinned as a dev dependency:
 
 ```text
 npm install
-npm test                     # 26 tests
+npm test                     # 36 tests
 npm run package              # -> dist/local-change-groups-<version>.vsix
 npm run install-extension    # package, then install into VS Code
 ```
