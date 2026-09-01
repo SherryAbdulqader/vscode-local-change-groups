@@ -21,6 +21,11 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Git status (default) or by their group color.
 - **New Group from Selection**, which names, colors, and fills a group from the
   selected rows in one step and one persisted write.
+- A commit panel above the tree with a group picker, a message box, and Stage,
+  Commit, and Commit & Push buttons, mirroring the Source Control commit box.
+  `Ctrl+Enter` commits, and unsent messages are kept per group. It is a webview
+  locked to `default-src 'none'` with a per-render nonce and no local resource
+  roots; every action it requests is re-validated in the extension host.
 
 ### Changed
 - Changes are now bucketed by group once per repaint instead of being re-scanned

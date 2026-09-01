@@ -19,9 +19,6 @@
   "categories": [
     "SCM Providers"
   ],
-  "activationEvents": [
-    "onView:localChangeGroups.view"
-  ],
   "extensionDependencies": [
     "vscode.git"
   ],
@@ -205,6 +202,13 @@
     },
     "views": {
       "localChangeGroups": [
+        {
+          "id": "localChangeGroups.commitPanel",
+          "name": "Commit",
+          "type": "webview",
+          "icon": "resources/change-groups.svg",
+          "contextualTitle": "Local Change Groups"
+        },
         {
           "id": "localChangeGroups.view",
           "name": "Changes by Group",

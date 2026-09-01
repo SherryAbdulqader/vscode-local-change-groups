@@ -12,6 +12,7 @@ Prefer it beside the built-in **Changes** list? Drag the view's title onto the S
 - Read file rows the way you read the built-in **Changes** list: file-theme icon, file name, dim folder path, and a single-letter status badge (`M`, `A`, `D`, `R`, `U`, `C`) in the matching Git color.
 - Assign, move, and remove changed files through tree menus or the Command Palette.
 - Choose from eight theme-aware colors for group dots. Set `localChangeGroups.fileColors` to `group` to tint file rows by their group instead of by Git status.
+- Commit from a Source Control style box at the top of the view: pick a group, type a message, press `Ctrl+Enter`. Drafts are kept per group.
 - Stage one group, commit one group, or commit and push one group with safety checks.
 - Open tracked changes in VS Code's Git diff and untracked files in the editor.
 - Refresh automatically from VS Code's built-in Git extension.
@@ -34,7 +35,9 @@ If a push fails, the commit remains local. The extension reports this clearly so
 
 ## Privacy
 
-Group names, colors, and assignments are stored only in VS Code `workspaceState`. The extension does not add metadata files to the repository or change `.gitignore` or `.git/info`. It has no telemetry, webview, shell execution, runtime dependencies, or direct network client. Guarded group actions run only the Git executable path supplied by VS Code, using argument arrays and no shell; inherited `GIT_*` environment variables are removed. Network access occurs only when the user explicitly requests a push, which is performed by VS Code's built-in Git extension.
+Group names, colors, and assignments are stored only in VS Code `workspaceState`. The extension does not add metadata files to the repository or change `.gitignore` or `.git/info`. It has no telemetry, shell execution, runtime dependencies, or direct network client.
+
+The commit panel is the extension's only webview. Its Content Security Policy is `default-src 'none'` with a per-render nonce for its own inline style and script, and it declares no `localResourceRoots`, so it cannot load anything from disk or the network. It exchanges only group names, colors, file counts, the current branch name, and the message you type; every action it requests is re-validated in the extension host before any Git command runs. Guarded group actions run only the Git executable path supplied by VS Code, using argument arrays and no shell; inherited `GIT_*` environment variables are removed. Network access occurs only when the user explicitly requests a push, which is performed by VS Code's built-in Git extension.
 
 It is disabled in untrusted and virtual workspaces.
 

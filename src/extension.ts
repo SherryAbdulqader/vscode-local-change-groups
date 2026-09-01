@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { CommitPanelProvider, PanelAction } from './commitPanel';
 import { ChangeDecorationProvider } from './decoration';
 import { ChangeGroupsDragAndDropController } from './dragAndDrop';
 import { getGitApi } from './git';
@@ -23,8 +24,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       showCollapseAll: true
     });
 
-    context.subscriptions.push(output, provider, decorations, view);
+    const commitPanel = new CommitPanelProvider(
+      () => ({
+        branch: gitApi?.repositories[0]?.state.HEAD?.name,
+        groups: store.getGroups().map(group => ({
+          id: group.id,
+          name: group.name,
+          color: group.color,
+          count: countGroupFiles(provider, gitApi, group.id)
+        }))
+      }),
+      (action, groupId, message) => runCommand(output, async () => {
+        const selected = groupNodeById(groupId, store, gitApi);
+        await runPanelAction(action, selected, provider, gitApi!.git.path, message);
+      })
+    );
+
+    context.subscriptions.push(output, provider, decorations, view, commitPanel);
     context.subscriptions.push(vscode.window.registerFileDecorationProvider(decorations));
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(CommitPanelProvider.viewId, commitPanel),
+      provider.onDidChangeTreeData(() => commitPanel.refresh()),
+      view.onDidChangeSelection(event => commitPanel.setSelectedGroup(selectedGroupId(event.selection)))
+    );
     context.subscriptions.push(
       vscode.commands.registerCommand('localChangeGroups.refresh', () => provider.refresh()),
       vscode.commands.registerCommand('localChangeGroups.createGroup', () => runCommand(output, async () => {
@@ -116,41 +138,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand('localChangeGroups.stageGroup', (node?: GroupNode) => runCommand(output, async () => {
         const selected = await requireGroupNode(node, store, gitApi, 'Select a group to stage');
         if (!selected) return;
-        const changes = provider.getGroupChanges(selected);
-        const plan = buildOperationPlan(selected.repository, changes.map(item => item.change), 'stage');
-        await executeGroupOperation(selected.repository, plan, gitApi!.git.path);
-        provider.refresh();
-        void vscode.window.showInformationMessage(`Staged only group "${selected.group!.name}".`);
+        await stageGroupNode(selected, provider, gitApi!.git.path);
       })),
       vscode.commands.registerCommand('localChangeGroups.commitGroup', (node?: GroupNode) => runCommand(output, async () => {
         const selected = await requireGroupNode(node, store, gitApi, 'Select a group to commit');
         if (!selected) return;
-        const plan = buildOperationPlan(selected.repository, provider.getGroupChanges(selected).map(item => item.change), 'commit');
         const message = await promptCommitMessage(selected.group!);
         if (!message) return;
-        await executeGroupOperation(selected.repository, plan, gitApi!.git.path, message);
-        provider.refresh();
-        void vscode.window.showInformationMessage(`Committed only group "${selected.group!.name}".`);
+        await commitGroupNode(selected, provider, gitApi!.git.path, message);
       })),
       vscode.commands.registerCommand('localChangeGroups.commitAndPushGroup', (node?: GroupNode) => runCommand(output, async () => {
         const selected = await requireGroupNode(node, store, gitApi, 'Select a group to commit and push');
         if (!selected) return;
-        const plan = buildOperationPlan(selected.repository, provider.getGroupChanges(selected).map(item => item.change), 'push');
         const message = await promptCommitMessage(selected.group!);
         if (!message) return;
-        const confirmation = await vscode.window.showWarningMessage(
-          `Commit and push exactly group "${selected.group!.name}" on branch "${plan.branch}"?`,
-          { modal: true },
-          'Commit & Push'
-        );
-        if (confirmation !== 'Commit & Push') return;
-        try {
-          await executeGroupOperation(selected.repository, plan, gitApi!.git.path, message, true);
-        } catch (error) {
-          throw new Error(`${errorMessage(error)} If the commit succeeded, it remains local and can be pushed after resolving the problem.`);
-        }
-        provider.refresh();
-        void vscode.window.showInformationMessage(`Pushed only group "${selected.group!.name}".`);
+        await pushGroupNode(selected, provider, gitApi!.git.path, message);
       }))
     );
 
@@ -162,6 +164,99 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output.appendLine(`Activation failed: ${errorMessage(error)}`);
     void vscode.window.showErrorMessage(`Local Change Groups: ${errorMessage(error)}`);
   }
+}
+
+/** Runs the action a commit panel button asked for. */
+async function runPanelAction(
+  action: PanelAction,
+  selected: GroupNode,
+  provider: ChangeGroupsTreeProvider,
+  gitPath: string,
+  message: string
+): Promise<void> {
+  if (action === 'stage') {
+    await stageGroupNode(selected, provider, gitPath);
+    return;
+  }
+  const trimmed = message.trim();
+  if (!trimmed) {
+    throw new Error('Enter a commit message.');
+  }
+  if (action === 'commit') {
+    await commitGroupNode(selected, provider, gitPath, trimmed);
+  } else {
+    await pushGroupNode(selected, provider, gitPath, trimmed);
+  }
+}
+
+/** Resolves a stored group id to exactly one repository's group row. */
+function groupNodeById(
+  groupId: string,
+  store: GroupStore,
+  gitApi: Awaited<ReturnType<typeof getGitApi>>
+): GroupNode {
+  const group = store.getGroups().find(candidate => candidate.id === groupId);
+  if (!group) throw new Error('Group not found.');
+  const repositories = gitApi?.repositories ?? [];
+  if (repositories.length !== 1) {
+    throw new Error('Run this action from a group row when multiple repositories are open.');
+  }
+  return new GroupNode(repositories[0], group);
+}
+
+/** Counts the files a group currently holds, across open repositories. */
+function countGroupFiles(
+  provider: ChangeGroupsTreeProvider,
+  gitApi: Awaited<ReturnType<typeof getGitApi>>,
+  groupId: string
+): number {
+  const group = { id: groupId, name: '', color: 'blue' as const };
+  return (gitApi?.repositories ?? [])
+    .reduce((total, repository) => total + provider.getGroupChanges(new GroupNode(repository, group)).length, 0);
+}
+
+/** Returns the group a tree selection points at, if any. */
+function selectedGroupId(selection: readonly unknown[]): string | undefined {
+  for (const node of selection) {
+    if (node instanceof GroupNode && node.group) return node.group.id;
+    if (node instanceof FileNode && node.groupId) return node.groupId;
+  }
+  return undefined;
+}
+
+/** Stages exactly one group's files. */
+async function stageGroupNode(selected: GroupNode, provider: ChangeGroupsTreeProvider, gitPath: string): Promise<void> {
+  const changes = provider.getGroupChanges(selected);
+  const plan = buildOperationPlan(selected.repository, changes.map(item => item.change), 'stage');
+  await executeGroupOperation(selected.repository, plan, gitPath);
+  provider.refresh();
+  void vscode.window.showInformationMessage(`Staged only group "${selected.group!.name}".`);
+}
+
+/** Commits exactly one group's files with an already-resolved message. */
+async function commitGroupNode(selected: GroupNode, provider: ChangeGroupsTreeProvider, gitPath: string, message: string): Promise<void> {
+  const plan = buildOperationPlan(selected.repository, provider.getGroupChanges(selected).map(item => item.change), 'commit');
+  await executeGroupOperation(selected.repository, plan, gitPath, message);
+  provider.refresh();
+  void vscode.window.showInformationMessage(`Committed only group "${selected.group!.name}".`);
+}
+
+/** Confirms, then commits and pushes exactly one group's files. */
+async function pushGroupNode(selected: GroupNode, provider: ChangeGroupsTreeProvider, gitPath: string, message: string): Promise<void> {
+  const plan = buildOperationPlan(selected.repository, provider.getGroupChanges(selected).map(item => item.change), 'push');
+  const confirmation = await vscode.window.showWarningMessage(
+    `Commit and push exactly group "${selected.group!.name}" on branch "${plan.branch}"?`,
+    { modal: true },
+    'Commit & Push'
+  );
+  if (confirmation !== 'Commit & Push') return;
+  try {
+    await executeGroupOperation(selected.repository, plan, gitPath, message, true);
+  } catch (error) {
+    throw new Error(`${errorMessage(error)} If the commit succeeded, it remains local and can be pushed after resolving the problem.`);
+  }
+  provider.refresh();
+  void vscode.window.showInformationMessage(`Pushed only group "${selected.group!.name}".`);
 }
 
 /** Performs a command with consistent user-visible error handling. */
