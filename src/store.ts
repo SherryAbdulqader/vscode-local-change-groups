@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_GROUP_COLOR, GroupColor, isGroupColor, LocalGroup, normalizeGroupName, normalizePersistedState, PersistedState } from './model';
+import { DEFAULT_GROUP_COLOR, GroupColor, isGroupColor, LocalGroup, normalizeGroupIcon, normalizeGroupName, normalizePersistedState, PersistedState } from './model';
 
 const STORAGE_KEY = 'localChangeGroups.state.v1';
 
@@ -65,6 +65,12 @@ export class GroupStore {
   public async setGroupColor(groupId: string, color: GroupColor): Promise<void> {
     if (!isGroupColor(color)) throw new Error('Select a supported group color.');
     await this.mutate(next => { this.requireGroup(next, groupId).color = color; });
+  }
+
+  /** Changes and persists an existing group's codicon. */
+  public async setGroupIcon(groupId: string, icon: string): Promise<void> {
+    const normalized = normalizeGroupIcon(icon);
+    await this.mutate(next => { this.requireGroup(next, groupId).icon = normalized; });
   }
 
   /** Deletes a group and returns its files to Ungrouped. */

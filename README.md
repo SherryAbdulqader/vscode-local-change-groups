@@ -11,7 +11,8 @@ Prefer it beside the built-in **Changes** list? Drag the view's title onto the S
 - Select many files with `Ctrl`/`Shift` and assign, move, or remove them in one action, or turn the selection straight into a new group.
 - Read file rows the way you read the built-in **Changes** list: file-theme icon, file name, dim folder path, and a single-letter status badge (`M`, `A`, `D`, `R`, `U`, `C`) in the matching Git color.
 - Assign, move, and remove changed files through tree menus or the Command Palette.
-- Choose from eight theme-aware colors for group dots. Set `localChangeGroups.fileColors` to `group` to tint file rows by their group instead of by Git status.
+- Give each group its own icon — a beaker for Tests, a lock for Local Only, a rocket for what is ready to ship. Pick from sixteen, or type any VS Code codicon id. Emoji work too: put one straight in the group name.
+- Choose from eight theme-aware colors, which tint whichever icon a group uses. Set `localChangeGroups.fileColors` to `group` to tint file rows by their group instead of by Git status.
 - Commit from a Source Control style box at the top of the view: pick a group, type a message, press `Ctrl+Enter`. Drafts are kept per group.
 - See a count of changed files on the Activity Bar icon.
 - Split into **Staged Changes** and **Changes** the moment anything is staged, with your groups nested under each; the split disappears again when the index is clean.
@@ -75,7 +76,7 @@ which is pinned as a dev dependency:
 
 ```text
 npm install
-npm test                     # 46 tests
+npm test                     # 52 tests
 npm run package              # -> dist/local-change-groups-<version>.vsix
 npm run install-extension    # package, then install into VS Code
 ```

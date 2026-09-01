@@ -5,7 +5,7 @@ import { ChangeGroupsDragAndDropController } from './dragAndDrop';
 import { getGitApi } from './git';
 import { GroupStore } from './store';
 import { ChangeGroupsTreeProvider, DisplayChange, FileNode, GroupNode } from './tree';
-import { GROUP_COLORS, GroupColor, LocalGroup } from './model';
+import { DEFAULT_GROUP_ICON, GROUP_COLORS, GROUP_ICONS, GroupColor, LocalGroup, normalizeGroupIcon } from './model';
 import { acquireRepositoryLock, buildOperationPlan, executeGroupOperation } from './operations';
 import { isInSection, partitionForDiscard } from './presentation';
 
@@ -84,6 +84,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await store.setGroupColor(group.id, color);
         provider.refresh();
         output.appendLine(`Changed ${group.name} color to ${color}`);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.changeIcon', (node?: GroupNode) => runCommand(output, async () => {
+        const group = node?.group ?? await pickGroup(store, 'Select a group to change its icon');
+        if (!group) return;
+        const icon = await pickIcon(group.icon);
+        if (!icon) return;
+        await store.setGroupIcon(group.id, icon);
+        provider.refresh();
+        output.appendLine(`Changed ${group.name} icon to ${icon}`);
       })),
       vscode.commands.registerCommand('localChangeGroups.deleteGroup', (node?: GroupNode) => runCommand(output, async () => {
         const group = node?.group ?? await pickGroup(store, 'Select a group to delete');
@@ -454,6 +463,42 @@ async function pickColor(current?: GroupColor): Promise<GroupColor | undefined> 
     { placeHolder: 'Choose a group color' }
   );
   return selection?.color;
+}
+
+/**
+ * Prompts for a group codicon. Each row previews the icon itself through the
+ * `$(id)` label syntax, and the last row accepts any codicon id by hand.
+ */
+async function pickIcon(current?: string): Promise<string | undefined> {
+  const active = current ?? DEFAULT_GROUP_ICON;
+  const selection = await vscode.window.showQuickPick(
+    [
+      ...GROUP_ICONS.map(icon => ({
+        label: `$(${icon.id}) ${icon.hint}`,
+        description: icon.id === active ? `${icon.id} · Current` : icon.id,
+        icon: icon.id as string | undefined
+      })),
+      { label: '$(edit) Custom…', description: 'Enter any VS Code codicon id', icon: undefined }
+    ],
+    { placeHolder: 'Choose a group icon', matchOnDescription: true }
+  );
+  if (!selection) return undefined;
+  if (selection.icon) return selection.icon;
+
+  const typed = await vscode.window.showInputBox({
+    title: 'Custom Group Icon',
+    prompt: 'A VS Code codicon id, such as "beaker" or "symbol-event"',
+    value: current,
+    validateInput: value => {
+      try {
+        normalizeGroupIcon(value);
+        return undefined;
+      } catch (error) {
+        return errorMessage(error);
+      }
+    }
+  });
+  return typed ? normalizeGroupIcon(typed) : undefined;
 }
 
 /** Resolves an explicit or picked named group to exactly one repository. */

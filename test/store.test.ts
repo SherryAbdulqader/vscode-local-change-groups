@@ -162,3 +162,21 @@ test('moveAssignments rejects an empty batch and an unknown group', async () => 
   );
   assert.equal(store.getAssignment('repo::a.ts'), undefined);
 });
+
+test('store sets and persists a group icon', async () => {
+  const memory = new MemoryMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Tests', 'green');
+  assert.equal(store.getGroups()[0].icon, undefined);
+  await store.setGroupIcon(group.id, 'Beaker');
+  assert.equal(store.getGroups()[0].icon, 'beaker');
+  assert.equal(new GroupStore(memory).getGroups()[0].icon, 'beaker');
+});
+
+test('store rejects a malformed icon and an unknown group', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Tests');
+  await assert.rejects(store.setGroupIcon(group.id, '$(beaker)'), /codicon id/);
+  await assert.rejects(store.setGroupIcon('missing', 'beaker'), /Group not found/);
+  assert.equal(store.getGroups()[0].icon, undefined);
+});

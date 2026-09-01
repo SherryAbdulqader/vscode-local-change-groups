@@ -52,6 +52,12 @@
         "category": "Local Change Groups"
       },
       {
+        "command": "localChangeGroups.changeIcon",
+        "title": "Change Group Icon",
+        "icon": "$(smiley)",
+        "category": "Local Change Groups"
+      },
+      {
         "command": "localChangeGroups.deleteGroup",
         "title": "Delete Group",
         "category": "Local Change Groups",
@@ -353,12 +359,12 @@
         {
           "command": "localChangeGroups.renameGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
-          "group": "1_modify@2"
+          "group": "1_modify@3"
         },
         {
           "command": "localChangeGroups.deleteGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
-          "group": "1_modify@3"
+          "group": "1_modify@4"
         },
         {
           "command": "localChangeGroups.unstageGroup",
@@ -374,6 +380,11 @@
           "command": "localChangeGroups.unstageChanges",
           "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.staged$/",
           "group": "inline@0"
+        },
+        {
+          "command": "localChangeGroups.changeIcon",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "1_modify@2"
         }
       ]
     }

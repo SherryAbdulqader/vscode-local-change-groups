@@ -2,7 +2,7 @@ import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
 import { changeDecorationUri } from './decoration';
 import { GitApi, GitRepository } from './git';
-import { LocalGroup } from './model';
+import { DEFAULT_GROUP_ICON, LocalGroup } from './model';
 import { assignedGroupId, collectChanges, CollectedChange } from './path';
 import { ChangeSection, directoryLabel, groupColorId, isInSection, sectionLabel, statusLabel } from './presentation';
 import { GroupStore } from './store';
@@ -252,7 +252,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
       : 'Changes that belong to no group\nDrop files here to remove them from their group.';
     item.contextValue = element.group ? 'localChangeGroups.group' : 'localChangeGroups.ungrouped';
     item.iconPath = new vscode.ThemeIcon(
-      element.group ? 'circle-filled' : 'circle-outline',
+      element.group ? element.group.icon ?? DEFAULT_GROUP_ICON : 'circle-outline',
       element.group ? groupThemeColor(element.group.color) : undefined
     );
     return item;
