@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assignmentKey, collectChanges, relativeChangePath } from '../src/path';
+import { assignedGroupId, assignmentKey, collectChanges, relativeChangePath } from '../src/path';
 import type { GitChange, GitRepository } from '../src/git';
 
 test('relativeChangePath returns slash-separated paths', () => {
@@ -49,6 +49,18 @@ test('collectChanges gives merge changes precedence over combined states', () =>
   assert.equal(result.change, working);
 });
 
+test('collectChanges retains the original assignment key for a rename', () => {
+  const renamed = change('C:\\repo\\src\\new.ts', 3);
+  renamed.originalUri = { fsPath: 'C:\\repo\\src\\old.ts' } as GitChange['uri'];
+  const [result] = collectChanges(repository([renamed], [], []));
+  assert.deepEqual(result.assignmentKeys, [
+    assignmentKey('C:\\repo', 'src/new.ts'),
+    assignmentKey('C:\\repo', 'src/old.ts')
+  ]);
+  const oldKey = assignmentKey('C:\\repo', 'src/old.ts');
+  assert.equal(assignedGroupId(result, key => key === oldKey ? 'local-only' : undefined), 'local-only');
+});
+
 function change(fsPath: string, status: number): GitChange {
   return { uri: { fsPath } as GitChange['uri'], status };
 }
@@ -65,6 +77,11 @@ function repository(
       indexChanges,
       mergeChanges,
       onDidChange: (() => ({ dispose() {} })) as GitRepository['state']['onDidChange']
-    }
+    },
+    add: async () => {},
+    revert: async () => {},
+    commit: async () => {},
+    push: async () => {},
+    status: async () => {}
   };
 }

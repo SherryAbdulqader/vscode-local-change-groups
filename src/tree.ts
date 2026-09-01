@@ -2,7 +2,7 @@ import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
 import { GitApi, GitRepository } from './git';
 import { LocalGroup } from './model';
-import { collectChanges, CollectedChange } from './path';
+import { assignedGroupId, collectChanges, CollectedChange } from './path';
 import { GroupStore } from './store';
 
 export { collectChanges } from './path';
@@ -28,7 +28,8 @@ export class FileNode {
   public readonly kind = 'file';
   public constructor(
     public readonly displayChange: DisplayChange,
-    public readonly groupId: string | undefined
+    public readonly groupId: string | undefined,
+    public readonly groupColor: LocalGroup['color'] | undefined
   ) {}
 }
 
@@ -95,7 +96,10 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
       const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Expanded);
       item.description = String(count);
       item.contextValue = element.group ? 'localChangeGroups.group' : 'localChangeGroups.ungrouped';
-      item.iconPath = new vscode.ThemeIcon(element.group ? 'folder' : 'folder-opened');
+      item.iconPath = new vscode.ThemeIcon(
+        element.group ? 'folder' : 'folder-opened',
+        element.group ? groupThemeColor(element.group.color) : undefined
+      );
       return item;
     }
 
@@ -105,7 +109,9 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     item.tooltip = `${displayChange.relativePath}\n${item.description}`;
     item.resourceUri = displayChange.change.uri;
     item.contextValue = element.groupId ? 'localChangeGroups.file.grouped' : 'localChangeGroups.file.ungrouped';
-    item.iconPath = statusIcon(displayChange.change.status);
+    item.iconPath = element.groupColor
+      ? new vscode.ThemeIcon(statusIconName(displayChange.change.status), groupThemeColor(element.groupColor))
+      : statusIcon(displayChange.change.status);
     item.command = {
       command: 'localChangeGroups.openChange',
       title: 'Open Change',
@@ -127,7 +133,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     }
     if (element instanceof GroupNode) {
       return this.changesForGroup(element.repository, element.group?.id)
-        .map(change => new FileNode(change, element.group?.id));
+        .map(change => new FileNode(change, element.group?.id, element.group?.color));
     }
     return [];
   }
@@ -135,6 +141,12 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   /** Returns every changed file currently known across repositories. */
   public getAllChanges(): DisplayChange[] {
     return (this.gitApi?.repositories ?? []).flatMap(repository => collectChanges(repository));
+  }
+
+  /** Returns the currently visible changes assigned to a repository-scoped group. */
+  public getGroupChanges(node: GroupNode): DisplayChange[] {
+    if (!node.group) throw new Error('Select a named group.');
+    return this.changesForGroup(node.repository, node.group.id);
   }
 
   /** Watches one repository for status changes. */
@@ -147,7 +159,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   /** Filters repository changes by their private group assignment. */
   private changesForGroup(repository: GitRepository, groupId: string | undefined): DisplayChange[] {
     return collectChanges(repository)
-      .filter(change => this.store.getAssignment(change.fileKey) === groupId)
+      .filter(change => assignedGroupId(change, key => this.store.getAssignment(key)) === groupId)
       .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   }
 }
@@ -178,4 +190,18 @@ function statusIcon(status: number): vscode.ThemeIcon {
     return new vscode.ThemeIcon('warning', new vscode.ThemeColor('gitDecoration.conflictingResourceForeground'));
   }
   return new vscode.ThemeIcon('diff-modified', new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'));
+}
+
+/** Returns the status-specific icon name used by colored group members. */
+function statusIconName(status: number): string {
+  if ([2, 6].includes(status)) return 'diff-removed';
+  if ([1, 7, 9].includes(status)) return 'diff-added';
+  if ([3, 10].includes(status)) return 'diff-renamed';
+  if (status >= 12) return 'warning';
+  return 'diff-modified';
+}
+
+/** Maps a stored palette key to its contributed theme color. */
+function groupThemeColor(color: LocalGroup['color']): vscode.ThemeColor {
+  return new vscode.ThemeColor(`localChangeGroups.${color}`);
 }

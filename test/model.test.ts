@@ -15,7 +15,17 @@ test('normalizePersistedState removes dangling assignments', () => {
     groups: [{ id: 'one', name: 'Local' }],
     assignments: { valid: 'one', dangling: 'two' }
   }), {
-    groups: [{ id: 'one', name: 'Local' }],
+    groups: [{ id: 'one', name: 'Local', color: 'blue' }],
     assignments: { valid: 'one' }
   });
+});
+
+test('normalizePersistedState preserves valid colors and migrates missing colors', () => {
+  assert.deepEqual(normalizePersistedState({
+    groups: [{ id: 'old', name: 'Old' }, { id: 'new', name: 'New', color: 'purple' }],
+    assignments: {}
+  }).groups, [
+    { id: 'old', name: 'Old', color: 'blue' },
+    { id: 'new', name: 'New', color: 'purple' }
+  ]);
 });

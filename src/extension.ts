@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import { getGitApi } from './git';
 import { GroupStore } from './store';
 import { ChangeGroupsTreeProvider, DisplayChange, FileNode, GroupNode } from './tree';
+import { GROUP_COLORS, GroupColor, LocalGroup } from './model';
+import { buildOperationPlan, executeGroupOperation } from './operations';
 
-/** Activates the local-only, read-only change grouping view. */
+/** Activates the local grouping view and guarded Git actions. */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Local Change Groups');
   try {
@@ -22,7 +24,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           validateInput: value => value.trim() ? undefined : 'Enter a group name.'
         });
         if (name === undefined) return;
-        await store.createGroup(name);
+        const color = await pickColor();
+        if (!color) return;
+        await store.createGroup(name, color);
         provider.refresh();
         output.appendLine(`Created local group: ${name.trim()}`);
       })),
@@ -34,6 +38,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await store.renameGroup(group.id, name);
         provider.refresh();
         output.appendLine(`Renamed local group to: ${name.trim()}`);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.changeColor', (node?: GroupNode) => runCommand(output, async () => {
+        const group = node?.group ?? await pickGroup(store, 'Select a group to recolor');
+        if (!group) return;
+        const color = await pickColor(group.color);
+        if (!color) return;
+        await store.setGroupColor(group.id, color);
+        provider.refresh();
+        output.appendLine(`Changed ${group.name} color to ${color}`);
       })),
       vscode.commands.registerCommand('localChangeGroups.deleteGroup', (node?: GroupNode) => runCommand(output, async () => {
         const group = node?.group ?? await pickGroup(store, 'Select a group to delete');
@@ -53,14 +66,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!change) return;
         const group = await pickGroup(store, 'Assign or move to group');
         if (!group) return;
-        await store.assign(change.fileKey, group.id);
+        await store.moveAssignment(change.assignmentKeys, change.fileKey, group.id);
         provider.refresh();
         output.appendLine(`Assigned ${change.relativePath} to ${group.name}`);
       })),
       vscode.commands.registerCommand('localChangeGroups.removeFromGroup', (node?: FileNode) => runCommand(output, async () => {
         const change = node?.displayChange ?? await pickChange(provider, 'Select a changed file');
         if (!change) return;
-        await store.unassign(change.fileKey);
+        await store.unassignAll(change.assignmentKeys);
         provider.refresh();
         output.appendLine(`Returned ${change.relativePath} to Ungrouped`);
       })),
@@ -74,13 +87,52 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         } else {
           await vscode.commands.executeCommand('git.openChange', change.uri);
         }
+      })),
+      vscode.commands.registerCommand('localChangeGroups.stageGroup', (node?: GroupNode) => runCommand(output, async () => {
+        const selected = await requireGroupNode(node, store, gitApi, 'Select a group to stage');
+        if (!selected) return;
+        const changes = provider.getGroupChanges(selected);
+        const plan = buildOperationPlan(selected.repository, changes.map(item => item.change), 'stage');
+        await executeGroupOperation(selected.repository, plan, gitApi!.git.path);
+        provider.refresh();
+        void vscode.window.showInformationMessage(`Staged only group "${selected.group!.name}".`);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.commitGroup', (node?: GroupNode) => runCommand(output, async () => {
+        const selected = await requireGroupNode(node, store, gitApi, 'Select a group to commit');
+        if (!selected) return;
+        const plan = buildOperationPlan(selected.repository, provider.getGroupChanges(selected).map(item => item.change), 'commit');
+        const message = await promptCommitMessage(selected.group!);
+        if (!message) return;
+        await executeGroupOperation(selected.repository, plan, gitApi!.git.path, message);
+        provider.refresh();
+        void vscode.window.showInformationMessage(`Committed only group "${selected.group!.name}".`);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.commitAndPushGroup', (node?: GroupNode) => runCommand(output, async () => {
+        const selected = await requireGroupNode(node, store, gitApi, 'Select a group to commit and push');
+        if (!selected) return;
+        const plan = buildOperationPlan(selected.repository, provider.getGroupChanges(selected).map(item => item.change), 'push');
+        const message = await promptCommitMessage(selected.group!);
+        if (!message) return;
+        const confirmation = await vscode.window.showWarningMessage(
+          `Commit and push exactly group "${selected.group!.name}" on branch "${plan.branch}"?`,
+          { modal: true },
+          'Commit & Push'
+        );
+        if (confirmation !== 'Commit & Push') return;
+        try {
+          await executeGroupOperation(selected.repository, plan, gitApi!.git.path, message, true);
+        } catch (error) {
+          throw new Error(`${errorMessage(error)} If the commit succeeded, it remains local and can be pushed after resolving the problem.`);
+        }
+        provider.refresh();
+        void vscode.window.showInformationMessage(`Pushed only group "${selected.group!.name}".`);
       }))
     );
 
     if (!gitApi) {
       void vscode.window.showInformationMessage('Local Change Groups requires VS Code\'s built-in Git extension.');
     }
-    output.appendLine('Local Change Groups activated in read-only Git mode.');
+    output.appendLine('Local Change Groups activated with guarded group Git actions.');
   } catch (error) {
     output.appendLine(`Activation failed: ${errorMessage(error)}`);
     void vscode.window.showErrorMessage(`Local Change Groups: ${errorMessage(error)}`);
@@ -137,6 +189,40 @@ async function pickChange(provider: ChangeGroupsTreeProvider, placeHolder: strin
     { placeHolder, matchOnDescription: true }
   );
   return selection?.change;
+}
+
+/** Prompts for a predefined theme-aware group color. */
+async function pickColor(current?: GroupColor): Promise<GroupColor | undefined> {
+  const selection = await vscode.window.showQuickPick(
+    GROUP_COLORS.map(color => ({ label: color[0].toUpperCase() + color.slice(1), description: color === current ? 'Current' : undefined, color })),
+    { placeHolder: 'Choose a group color' }
+  );
+  return selection?.color;
+}
+
+/** Resolves an explicit or picked named group to exactly one repository. */
+async function requireGroupNode(
+  node: GroupNode | undefined,
+  store: GroupStore,
+  gitApi: Awaited<ReturnType<typeof getGitApi>>,
+  prompt: string
+): Promise<GroupNode | undefined> {
+  if (node?.group) return node;
+  const group = await pickGroup(store, prompt);
+  if (!group) return undefined;
+  const repositories = gitApi?.repositories ?? [];
+  if (repositories.length !== 1) throw new Error('Run this command from a group row when multiple repositories are open.');
+  return new GroupNode(repositories[0], group);
+}
+
+/** Prompts for a non-empty commit message tied to a selected group. */
+async function promptCommitMessage(group: LocalGroup): Promise<string | undefined> {
+  const message = await vscode.window.showInputBox({
+    title: `Commit Group: ${group.name}`,
+    prompt: 'Commit message',
+    validateInput: value => value.trim() ? undefined : 'Enter a commit message.'
+  });
+  return message?.trim() || undefined;
 }
 
 /** Converts unknown thrown values into concise messages. */

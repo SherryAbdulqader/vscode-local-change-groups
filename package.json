@@ -1,8 +1,8 @@
 {
   "name": "local-change-groups",
   "displayName": "Local Change Groups",
-  "description": "Privately organize Git changes in a read-only Source Control view.",
-  "version": "0.1.0",
+  "description": "Privately organize, color, and safely publish groups of Git changes.",
+  "version": "0.2.0",
   "publisher": "sherryabdulqader",
   "license": "MIT",
   "engines": {
@@ -13,6 +13,9 @@
   ],
   "activationEvents": [
     "onView:localChangeGroups.view"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
   ],
   "main": "./out/src/extension.js",
   "capabilities": {
@@ -35,6 +38,11 @@
         "title": "Local Change Groups: Rename Group"
       },
       {
+        "command": "localChangeGroups.changeColor",
+        "title": "Local Change Groups: Change Group Color",
+        "icon": "$(symbol-color)"
+      },
+      {
         "command": "localChangeGroups.deleteGroup",
         "title": "Local Change Groups: Delete Group"
       },
@@ -54,7 +62,32 @@
       {
         "command": "localChangeGroups.openChange",
         "title": "Local Change Groups: Open Change"
+      },
+      {
+        "command": "localChangeGroups.stageGroup",
+        "title": "Local Change Groups: Stage Group",
+        "icon": "$(add)"
+      },
+      {
+        "command": "localChangeGroups.commitGroup",
+        "title": "Local Change Groups: Commit Group",
+        "icon": "$(check)"
+      },
+      {
+        "command": "localChangeGroups.commitAndPushGroup",
+        "title": "Local Change Groups: Commit & Push Group",
+        "icon": "$(cloud-upload)"
       }
+    ],
+    "colors": [
+      { "id": "localChangeGroups.blue", "description": "Blue group color.", "defaults": { "dark": "#75BEFF", "light": "#006AB1", "highContrast": "#75BEFF", "highContrastLight": "#006AB1" } },
+      { "id": "localChangeGroups.green", "description": "Green group color.", "defaults": { "dark": "#89D185", "light": "#1A7F37", "highContrast": "#89D185", "highContrastLight": "#1A7F37" } },
+      { "id": "localChangeGroups.yellow", "description": "Yellow group color.", "defaults": { "dark": "#E2C08D", "light": "#8A6500", "highContrast": "#E2C08D", "highContrastLight": "#8A6500" } },
+      { "id": "localChangeGroups.orange", "description": "Orange group color.", "defaults": { "dark": "#F2A65A", "light": "#A45100", "highContrast": "#F2A65A", "highContrastLight": "#A45100" } },
+      { "id": "localChangeGroups.purple", "description": "Purple group color.", "defaults": { "dark": "#C586C0", "light": "#7A3E9D", "highContrast": "#C586C0", "highContrastLight": "#7A3E9D" } },
+      { "id": "localChangeGroups.pink", "description": "Pink group color.", "defaults": { "dark": "#F28CB1", "light": "#A12E61", "highContrast": "#F28CB1", "highContrastLight": "#A12E61" } },
+      { "id": "localChangeGroups.red", "description": "Red group color.", "defaults": { "dark": "#F48771", "light": "#C42B1C", "highContrast": "#F48771", "highContrastLight": "#C42B1C" } },
+      { "id": "localChangeGroups.gray", "description": "Gray group color.", "defaults": { "dark": "#B8B8B8", "light": "#5F6A6A", "highContrast": "#FFFFFF", "highContrastLight": "#000000" } }
     ],
     "views": {
       "scm": [
@@ -86,7 +119,27 @@
         {
           "command": "localChangeGroups.deleteGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "inline@3"
+        },
+        {
+          "command": "localChangeGroups.changeColor",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
           "group": "inline@2"
+        },
+        {
+          "command": "localChangeGroups.stageGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "git@1"
+        },
+        {
+          "command": "localChangeGroups.commitGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "git@2"
+        },
+        {
+          "command": "localChangeGroups.commitAndPushGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "git@3"
         },
         {
           "command": "localChangeGroups.assignToGroup",

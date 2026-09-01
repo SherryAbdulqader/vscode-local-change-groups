@@ -1,7 +1,12 @@
 export interface LocalGroup {
   id: string;
   name: string;
+  color: GroupColor;
 }
+
+export const GROUP_COLORS = ['blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'red', 'gray'] as const;
+export type GroupColor = typeof GROUP_COLORS[number];
+export const DEFAULT_GROUP_COLOR: GroupColor = 'blue';
 
 export interface PersistedState {
   groups: LocalGroup[];
@@ -28,7 +33,11 @@ export function normalizePersistedState(value: unknown): PersistedState {
 
   const candidate = value as Partial<PersistedState>;
   const groups = Array.isArray(candidate.groups)
-    ? candidate.groups.filter(isLocalGroup).map(group => ({ id: group.id, name: group.name }))
+    ? candidate.groups.filter(isLocalGroup).map(group => ({
+        id: group.id,
+        name: group.name,
+        color: isGroupColor(group.color) ? group.color : DEFAULT_GROUP_COLOR
+      }))
     : [];
   const validIds = new Set(groups.map(group => group.id));
   const assignments: Record<string, string> = {};
@@ -50,4 +59,9 @@ function isLocalGroup(value: unknown): value is LocalGroup {
   const group = value as Partial<LocalGroup>;
   return typeof group.id === 'string' && group.id.length > 0 &&
     typeof group.name === 'string' && group.name.trim().length > 0;
+}
+
+/** Checks whether an unknown value names a supported group color. */
+export function isGroupColor(value: unknown): value is GroupColor {
+  return typeof value === 'string' && (GROUP_COLORS as readonly string[]).includes(value);
 }

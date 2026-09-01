@@ -8,7 +8,17 @@ export interface CollectedChange {
   change: GitChange;
   relativePath: string;
   fileKey: string;
+  assignmentKeys: string[];
   area: ChangeArea;
+}
+
+/** Resolves a current or original rename key to its local group. */
+export function assignedGroupId(change: CollectedChange, lookup: (key: string) => string | undefined): string | undefined {
+  for (const key of change.assignmentKeys) {
+    const groupId = lookup(key);
+    if (groupId) return groupId;
+  }
+  return undefined;
 }
 
 /** Returns a stable slash-separated repository-relative path. */
@@ -53,16 +63,22 @@ export function collectChanges(repository: GitRepository): CollectedChange[] {
       try {
         const relativePath = relativeChangePath(repository.rootUri.fsPath, change.uri.fsPath);
         const fileKey = assignmentKey(repository.rootUri.fsPath, relativePath);
+        const assignmentKeys = [fileKey];
+        if (change.originalUri) {
+          const originalPath = relativeChangePath(repository.rootUri.fsPath, change.originalUri.fsPath);
+          assignmentKeys.push(assignmentKey(repository.rootUri.fsPath, originalPath));
+        }
         const existing = byPath.get(fileKey);
         byPath.set(fileKey, existing
-          ? { ...existing, area: mergeChangeArea(existing.area, area) }
-          : { repository, change, relativePath, fileKey, area });
+          ? { ...existing, assignmentKeys: [...new Set([...existing.assignmentKeys, ...assignmentKeys])], area: mergeChangeArea(existing.area, area) }
+          : { repository, change, relativePath, fileKey, assignmentKeys: [...new Set(assignmentKeys)], area });
       } catch {
         // Git API entries outside the repository are not valid group candidates.
       }
     }
   };
   add(repository.state.workingTreeChanges, 'Working Tree');
+  add(repository.state.untrackedChanges ?? [], 'Working Tree');
   add(repository.state.indexChanges, 'Staged');
   add(repository.state.mergeChanges, 'Merge');
   return [...byPath.values()];

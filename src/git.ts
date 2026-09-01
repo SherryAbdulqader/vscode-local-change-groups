@@ -11,13 +11,28 @@ export interface GitRepository {
   rootUri: vscode.Uri;
   state: {
     workingTreeChanges: GitChange[];
+    untrackedChanges?: GitChange[];
     indexChanges: GitChange[];
     mergeChanges: GitChange[];
+    rebaseCommit?: unknown;
+    HEAD?: {
+      name?: string;
+      commit?: string;
+      ahead?: number;
+      behind?: number;
+      upstream?: { remote: string; name: string };
+    };
     onDidChange: vscode.Event<void>;
   };
+  add(paths: string[]): Promise<void>;
+  revert(paths: string[]): Promise<void>;
+  commit(message: string): Promise<void>;
+  push(remoteName?: string, branchName?: string, setUpstream?: boolean, force?: number): Promise<void>;
+  status(): Promise<void>;
 }
 
 export interface GitApi {
+  git: { path: string };
   repositories: GitRepository[];
   onDidOpenRepository: vscode.Event<GitRepository>;
   onDidCloseRepository: vscode.Event<GitRepository>;

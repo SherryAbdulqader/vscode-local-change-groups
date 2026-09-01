@@ -1,37 +1,48 @@
 # Local Change Groups
 
-Local Change Groups adds a read-only tree to VS Code's Source Control sidebar. It lets you privately organize changed files into named groups such as **Local Only**, **Ready for GitHub**, or **Tests** while keeping an **Ungrouped** section.
+Local Change Groups adds a private tree to VS Code's Source Control sidebar. It organizes changed files into named, colored groups such as **Local Only**, **Ready for GitHub**, or **Tests**, while keeping an **Ungrouped** section.
 
 ## Features
 
-- Creates, renames, and deletes private groups.
-- Assigns, moves, and removes changed files through tree menus or the Command Palette.
-- Shows working-tree, staged, merge, and status labels with VS Code theme colors.
-- Opens tracked changes in VS Code's Git diff and untracked files in the editor.
-- Refreshes when VS Code's built-in Git extension reports a repository change.
-- Supports multiple open Git repositories.
+- Create, rename, recolor, and delete private groups.
+- Assign, move, and remove changed files through tree menus or the Command Palette.
+- Choose from eight theme-aware icon colors. A group's folder and member-file icons use the same color.
+- Stage one group, commit one group, or commit and push one group with safety checks.
+- Open tracked changes in VS Code's Git diff and untracked files in the editor.
+- Refresh automatically from VS Code's built-in Git extension.
+- Keep independent assignments for files in multiple open repositories.
 
-## Privacy and safety
+## Safe group Git actions
 
-Group names and assignments are stored only in VS Code `workspaceState`. The extension does not create repository files or modify `.gitignore`, `.git/info`, the index, commits, branches, or remotes.
+Git actions use the public `vscode.git` API and preserve working-tree changes outside the selected group. Before staging, the extension requires:
 
-The extension has:
+- a named, non-empty group scoped to one repository;
+- no conflicts, merge, or rebase in progress;
+- no partially staged files inside the selected group; unrelated staged hunks are preserved;
+- every path to resolve inside that repository.
 
-- no Git mutation commands;
-- no filesystem writes;
-- no shell or child processes;
-- no network requests or telemetry;
-- no webviews;
-- no runtime dependencies.
+Renames stage both paths and keep their group through the old-path assignment. The extension snapshots exact unrelated index records and verifies that they remain unchanged. If a pre-commit step fails, it unstages only group paths newly staged by this action, and only while the captured branch and HEAD are unchanged.
+
+**Commit Group** uses Git's path-scoped `commit --only` behavior, so staged files and staged hunks outside the group stay in the index without being unstaged or reconstructed. **Commit & Push Group** additionally requires a configured upstream and a branch known to be neither ahead nor behind. It revalidates after confirmation, requires exactly one direct child commit containing exactly the group paths, and pushes an explicit local-to-upstream refspec. It never force-pushes or sets an upstream.
+
+If a push fails, the commit remains local. The extension reports this clearly so it can be pushed after the remote problem is resolved.
+
+## Privacy
+
+Group names, colors, and assignments are stored only in VS Code `workspaceState`. The extension does not add metadata files to the repository or change `.gitignore` or `.git/info`. It has no telemetry, webview, shell execution, runtime dependencies, or direct network client. Guarded group actions run only the Git executable path supplied by VS Code, using argument arrays and no shell; inherited `GIT_*` environment variables are removed. Network access occurs only when the user explicitly requests a push, which is performed by VS Code's built-in Git extension.
 
 It is disabled in untrusted and virtual workspaces.
 
 ## Limitations
 
-- This is a separate view; VS Code does not allow extensions to rearrange the built-in **Changes** list.
-- Groups are organizational labels, not Git staging areas. Use VS Code's built-in Git controls to stage and commit.
+- This is a separate view; VS Code does not let extensions rearrange or color rows in the built-in **Changes** list.
+- VS Code does not expose arbitrary tree-row background highlighting. Colors apply to group and member-file icons.
+- A group is metadata, not a permanent Git staging area. Every Git action re-checks live repository state.
+- Another process or Git hook can still edit repository state in the tiny interval between checks. Post-commit verification blocks push when the result differs and asks you to inspect it.
+- Partially staged group files are blocked because their hunks cannot be safely reconstructed. Unrelated partial staging is allowed and preserved byte-for-byte in the index.
+- **Commit & Push Group** supports only an already-configured upstream that is fully synchronized. It does not create branches, pull, resolve divergence, set upstreams, or force-push.
 - Assignments are local to the current VS Code workspace and are not shared with teammates.
-- A renamed or moved file may need to be assigned again because assignments use its repository-relative path.
+- Renames retain their group when the Git API reports the old path; unrelated moves may need reassignment.
 
 ## Development
 

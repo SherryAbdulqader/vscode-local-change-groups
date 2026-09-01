@@ -16,6 +16,22 @@ class MemoryMemento implements MementoLike {
   }
 }
 
+class ControlledMemento extends MemoryMemento {
+  public calls = 0;
+  public failNext = false;
+  public release?: () => void;
+
+  public override async update(_key: string, value: unknown): Promise<void> {
+    this.calls += 1;
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error('storage failed');
+    }
+    if (this.calls === 1) await new Promise<void>(resolve => { this.release = resolve; });
+    this.value = value;
+  }
+}
+
 test('store creates, assigns, and unassigns groups', async () => {
   const memory = new MemoryMemento();
   const store = new GroupStore(memory);
@@ -38,4 +54,46 @@ test('store rejects duplicate group names', async () => {
   const store = new GroupStore(new MemoryMemento());
   await store.createGroup('Ready');
   await assert.rejects(() => store.createGroup('ready'), /already exists/);
+});
+
+test('store creates and changes a group color', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Ready', 'green');
+  assert.equal(group.color, 'green');
+  await store.setGroupColor(group.id, 'orange');
+  assert.equal(store.getGroups()[0].color, 'orange');
+});
+
+test('failed persistence does not change in-memory state', async () => {
+  const memory = new ControlledMemento();
+  memory.calls = 1;
+  memory.failNext = true;
+  const store = new GroupStore(memory);
+  await assert.rejects(() => store.createGroup('Not Saved'), /storage failed/);
+  assert.deepEqual(store.getGroups(), []);
+});
+
+test('concurrent writes are serialized and retain both changes', async () => {
+  const memory = new ControlledMemento();
+  const store = new GroupStore(memory);
+  const first = store.createGroup('First');
+  const second = store.createGroup('Second');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(memory.calls, 1);
+  memory.release!();
+  await Promise.all([first, second]);
+  assert.deepEqual(store.getGroups().map(group => group.name), ['First', 'Second']);
+  assert.equal(memory.calls, 2);
+});
+
+test('rename move and remove clear every alias atomically', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const first = await store.createGroup('First');
+  const second = await store.createGroup('Second');
+  await store.assign('old', first.id);
+  await store.moveAssignment(['new', 'old'], 'new', second.id);
+  assert.equal(store.getAssignment('old'), undefined);
+  assert.equal(store.getAssignment('new'), second.id);
+  await store.unassignAll(['new', 'old']);
+  assert.equal(store.getAssignment('new'), undefined);
 });
