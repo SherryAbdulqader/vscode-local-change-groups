@@ -1,16 +1,16 @@
 import * as nodePath from 'node:path';
 
 /**
- * Turns absolute file paths into the stable keys that group assignments are
- * stored under.
+ * Turns file paths into the keys we file assignments under.
  *
- * Assignments must survive a file being closed, the workspace reopening, and on
- * Windows the same repository being referenced with different drive-letter case,
- * so the key is deliberately derived from normalized text rather than any
- * VS Code or Git object identity.
+ * These keys have to survive closing a file, reopening the workspace, and — the
+ * fun one — Windows handing you "C:\repo" and "c:\repo" for the same folder on
+ * different days and considering the matter settled. So a key is built from
+ * normalized text, never from a VS Code or Git object; those are far too
+ * short-lived to trust with something that has to outlive a restart.
  */
 
-/** Returns a stable slash-separated repository-relative path. */
+/** Repo-relative, forward slashes, same answer on every platform. */
 export function relativeChangePath(repositoryRoot: string, filePath: string): string {
   if (!repositoryRoot.trim() || !filePath.trim()) {
     throw new Error('Repository and file paths are required.');
@@ -25,10 +25,11 @@ export function relativeChangePath(repositoryRoot: string, filePath: string): st
 }
 
 /**
- * Builds the private assignment key for one changed file.
+ * Builds the key one changed file is stored under.
  *
- * The platform is a parameter so the Windows casing rule can be tested from any
- * host, and so a repository root's case never splits one file into two keys.
+ * Platform is a parameter so the Windows casing rule can be tested from a Mac,
+ * and so a repo root's capitalisation never splits one file into two keys that
+ * then quietly disagree about which group it belongs to.
  */
 export function assignmentKey(
   repositoryRoot: string,
@@ -46,7 +47,7 @@ export function assignmentKey(
   return `${normalizedRoot}::${normalizedPath}`;
 }
 
-/** Normalizes a file system path so Windows comparisons ignore case and separators. */
+/** Squashes a path so two spellings of the same file compare equal on Windows. */
 export function comparablePath(value: string, platform: NodeJS.Platform = process.platform): string {
   if (!value.trim()) {
     throw new Error('A file path is required.');

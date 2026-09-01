@@ -7,8 +7,8 @@ import { ChangeGroupsTreeProvider } from '../view/changeTree';
 import { TreeNode } from '../view/nodes';
 
 /**
- * The handful of long-lived objects every command needs, passed as one value
- * instead of five parameters threaded through each registration.
+ * The handful of long-lived things every command needs, bundled up so each
+ * registration takes one argument instead of five.
  */
 export interface CommandContext {
   store: GroupStore;
@@ -19,9 +19,8 @@ export interface CommandContext {
 }
 
 /**
- * Narrows the context to what a Git action needs, failing loudly if the Git
- * extension is unavailable. Commands that touch Git call this instead of
- * asserting on `gitApi` themselves.
+ * Narrows the context down to what a Git action needs, and complains properly if
+ * the Git extension is not there. Beats scattering `gitApi!` around and hoping.
  */
 export function actionContext(context: CommandContext): ActionContext {
   if (!context.gitApi) {
@@ -31,11 +30,12 @@ export function actionContext(context: CommandContext): ActionContext {
 }
 
 /**
- * Performs a command with consistent user-visible error handling.
+ * Runs a command body and makes sure any failure is actually seen.
  *
- * Command callbacks are invoked by VS Code, which discards rejections silently,
- * so every registration is wrapped here to guarantee a failure is both logged
- * and shown.
+ * VS Code invokes command callbacks and then ignores whatever they return. Reject
+ * a promise in there and it nods politely and drops it on the floor, leaving the
+ * user staring at a button that did nothing. So everything gets wrapped: log it,
+ * show it, move on.
  */
 export async function runCommand(output: vscode.OutputChannel, action: () => Promise<void>): Promise<void> {
   if (!output || typeof action !== 'function') {

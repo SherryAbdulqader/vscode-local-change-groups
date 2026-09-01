@@ -1,7 +1,12 @@
 /**
- * The group vocabulary: what a group is, the palettes and icons it may use, and
- * the rules every stored value must satisfy. Nothing here touches VS Code or the
- * file system, so it is directly unit-testable.
+ * What a group is, and what counts as a legal one.
+ *
+ * Colors and icons live here rather than next to the tree because they get
+ * validated on the way into storage and again on the way out, and both of those
+ * happen a long way from any rendering code.
+ *
+ * No VS Code import, no file system. You can call anything in here from a test
+ * without standing up an editor first.
  */
 
 export interface LocalGroup {
@@ -18,7 +23,7 @@ export const DEFAULT_GROUP_COLOR: GroupColor = 'blue';
 
 export const DEFAULT_GROUP_ICON = 'circle-filled';
 
-/** Codicon ids offered by the icon picker, with what each one suggests. */
+/** The shortlist the icon picker shows. Add to it freely, it is just a list. */
 export const GROUP_ICONS: readonly { id: string; hint: string }[] = [
   { id: 'circle-filled', hint: 'Dot' },
   { id: 'beaker', hint: 'Tests' },
@@ -40,7 +45,7 @@ export const GROUP_ICONS: readonly { id: string; hint: string }[] = [
 
 const ICON_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
-/** Validates and normalizes a user-facing group name. */
+/** Trims a name down to something sane, or refuses it outright. */
 export function normalizeGroupName(value: string): string {
   const normalized = value.trim().replace(/\s+/g, ' ');
   if (!normalized) {
@@ -52,7 +57,11 @@ export function normalizeGroupName(value: string): string {
   return normalized;
 }
 
-/** Validates and normalizes a codicon id used as a group icon. */
+/**
+ * Cleans up a codicon id. Rejects "$(beaker)" on purpose: that is the label
+ * syntax, not the id, and VS Code responds to a bad id by drawing nothing at
+ * all, which is a miserable thing to debug.
+ */
 export function normalizeGroupIcon(value: string): string {
   const normalized = value.trim().toLowerCase();
   if (!ICON_PATTERN.test(normalized)) {
@@ -64,12 +73,12 @@ export function normalizeGroupIcon(value: string): string {
   return normalized;
 }
 
-/** Checks whether an unknown value names a supported group color. */
+/** Is this one of our eight colors? */
 export function isGroupColor(value: unknown): value is GroupColor {
   return typeof value === 'string' && (GROUP_COLORS as readonly string[]).includes(value);
 }
 
-/** Checks whether an unknown value is a usable codicon id. */
+/** Is this something ThemeIcon will actually draw? */
 export function isGroupIcon(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 40 && ICON_PATTERN.test(value);
 }

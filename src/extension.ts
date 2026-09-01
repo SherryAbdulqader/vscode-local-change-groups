@@ -14,19 +14,21 @@ import { ChangeGroupsDragAndDropController } from './view/dragAndDrop';
 import { GroupNode, TreeNode } from './view/nodes';
 
 /**
- * Composition root.
+ * Where everything gets plugged together.
  *
- * This file only builds the pieces, wires them together, and registers them for
- * disposal. All behavior lives in the layers below it:
+ * Deliberately boring: build the pieces, wire them up, hand them to VS Code for
+ * disposal. If you are looking for behavior, it is one directory down.
  *
- *   core/      pure domain — no vscode import, unit-tested directly
- *   data/      group metadata persisted in workspace state
- *   git/       the Git extension API and guarded group operations
- *   services/  the Git actions themselves, shared by every entry point
- *   view/      the tree, its rows, decorations, drag and drop, commit panel
- *   commands/  user-facing flows: resolve a target, prompt, delegate
+ *   core/      the actual rules — no vscode import, tested directly
+ *   data/      groups, saved in workspace state
+ *   git/       the Git extension API and the careful group operations
+ *   services/  the Git actions, shared by every way of starting one
+ *   view/      the tree, its rows, badges, drag and drop, commit panel
+ *   commands/  the user-facing flows: figure out the target, ask, delegate
  *
- * Dependencies point downward only; nothing in core or data knows the view exists.
+ * Dependencies point one way. Nothing in core or data has heard of the view, and
+ * that is what keeps the test suite runnable without an editor. See
+ * ARCHITECTURE.md before moving anything between layers.
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Local Change Groups');
@@ -55,8 +57,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       commitPanel,
       vscode.window.registerFileDecorationProvider(decorations),
       vscode.window.registerWebviewViewProvider(CommitPanelProvider.viewId, commitPanel),
-      // One tree change drives everything derived from it: the panel's counts
-      // and the Activity Bar badge.
+      // One tree change feeds everything downstream of it — the panel's counts
+      // and the badge on the Activity Bar icon.
       provider.onDidChangeTreeData(() => {
         commitPanel.refresh();
         view.badge = changeBadge(provider);
@@ -78,7 +80,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 }
 
-/** Builds the commit panel, reading live group state and running panel actions. */
+/** Builds the commit panel and tells it how to read state and how to act. */
 function buildCommitPanel(commands: CommandContext): CommitPanelProvider {
   return new CommitPanelProvider(
     () => ({
@@ -97,9 +99,9 @@ function buildCommitPanel(commands: CommandContext): CommitPanelProvider {
   );
 }
 
-/** Counts the files a group currently holds, across open repositories. */
+/** How many files are in this group right now, across every repository. */
 function countGroupFiles(commands: CommandContext, groupId: string): number {
-  // Only the id is read downstream, so a minimal stand-in group avoids a lookup.
+  // Nothing downstream reads anything but the id, so a stand-in saves a lookup.
   const group = { id: groupId, name: '', color: 'blue' as const };
   return repositoriesOf(commands.gitApi).reduce(
     (total, repository) => total + commands.provider.getGroupChanges(new GroupNode(repository, group)).length,
@@ -107,16 +109,16 @@ function countGroupFiles(commands: CommandContext, groupId: string): number {
   );
 }
 
-/** Returns the Activity Bar badge counting every changed file, or none when clean. */
+/** The number on the Activity Bar icon. Undefined when there is nothing to show. */
 function changeBadge(provider: ChangeGroupsTreeProvider): vscode.ViewBadge | undefined {
   const count = provider.getAllChanges().length;
   return count > 0 ? { value: count, tooltip: `${describeFileCount(count)} changed` } : undefined;
 }
 
-/** Returns open repositories, tolerating an unavailable Git extension. */
+/** Open repositories, or an empty list if Git never showed up. */
 function repositoriesOf(gitApi: GitApi | undefined) {
   return gitApi?.repositories ?? [];
 }
 
-/** Performs no work because activation owns disposable resources. */
+/** Nothing to do here — activation handed everything to context.subscriptions. */
 export function deactivate(): void {}

@@ -5,7 +5,7 @@ import { GroupStore } from '../data/groupStore';
 import { ChangeGroupsTreeProvider } from './changeTree';
 import { DisplayChange, FileNode, GroupNode, TreeNode } from './nodes';
 
-/** Payload identifier used when files are dragged inside this view. */
+/** VS Code insists this be exactly application/vnd.code.tree.<view id, lowercased>. */
 export const TREE_MIME_TYPE = 'application/vnd.code.tree.localchangegroups.view';
 
 interface DraggedChange {
@@ -13,17 +13,24 @@ interface DraggedChange {
   assignmentKeys: string[];
 }
 
-/** The group a drop targets, where an absent id means Ungrouped. */
+/** Where a drop landed. No id means the Ungrouped bucket. */
 interface DropTarget {
   groupId: string | undefined;
 }
 
-/** Moves changed files between local groups by dragging rows. */
+/**
+ * Drag files onto a group to assign them.
+ *
+ * Also accepts drops from outside — the Explorer, the built-in Changes list —
+ * by falling back to text/uri-list and matching the paths against changes we
+ * already know about. Anything we do not recognise is ignored rather than
+ * guessed at.
+ */
 export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDropController<TreeNode> {
   public readonly dragMimeTypes = ['text/uri-list'];
   public readonly dropMimeTypes = [TREE_MIME_TYPE, 'text/uri-list'];
 
-  /** Wires the controller to the view it reorders. */
+  /** Needs the tree to read from, the store to write to, and somewhere to log. */
   public constructor(
     private readonly provider: ChangeGroupsTreeProvider,
     private readonly store: GroupStore,
@@ -34,7 +41,7 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
     }
   }
 
-  /** Publishes the dragged file rows for this view and for editors. */
+  /** Packs up the dragged rows: our own payload, plus URIs for everyone else. */
   public handleDrag(source: readonly TreeNode[], dataTransfer: vscode.DataTransfer): void {
     const files = source.filter((node): node is FileNode => node instanceof FileNode);
     if (files.length === 0) {
@@ -50,7 +57,7 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
     ));
   }
 
-  /** Assigns every dropped file to the group under the cursor. */
+  /** Works out where the drop landed and moves the files there. */
   public async handleDrop(target: TreeNode | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
     try {
       const destination = resolveDropTarget(target);
@@ -79,7 +86,7 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
     }
   }
 
-  /** Reads dropped rows from this view, falling back to dropped file paths. */
+  /** Our own payload if this came from inside the tree, otherwise raw paths. */
   private async resolveDroppedChanges(dataTransfer: vscode.DataTransfer): Promise<DisplayChange[]> {
     const all = this.provider.getAllChanges();
     const internal = dataTransfer.get(TREE_MIME_TYPE)?.value as DraggedChange[] | undefined;
@@ -100,7 +107,13 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
   }
 }
 
-/** Returns the group a drop lands on, or nothing when the target is not droppable. */
+/**
+ * Which group did this land on?
+ *
+ * Dropping on a file row means "join that row's group", which is usually what
+ * someone aiming at a crowded tree actually meant. Section and repository
+ * headers are not targets.
+ */
 export function resolveDropTarget(target: TreeNode | undefined): DropTarget | undefined {
   if (target instanceof GroupNode) {
     return { groupId: target.group?.id };
@@ -111,7 +124,7 @@ export function resolveDropTarget(target: TreeNode | undefined): DropTarget | un
   return undefined;
 }
 
-/** Parses the standard newline-separated uri-list payload. */
+/** Turns a uri-list payload into URIs, skipping anything unparseable. */
 export function parseUriList(value: string): vscode.Uri[] {
   const uris: vscode.Uri[] = [];
   for (const entry of parseUriListEntries(value)) {
@@ -124,7 +137,7 @@ export function parseUriList(value: string): vscode.Uri[] {
   return uris;
 }
 
-/** Returns the group currently owning a change, if any. */
+/** The group a file is already in, so we can skip no-op moves. */
 function currentGroupId(change: DisplayChange, store: GroupStore): string | undefined {
   for (const key of change.assignmentKeys) {
     const groupId = store.getAssignment(key);

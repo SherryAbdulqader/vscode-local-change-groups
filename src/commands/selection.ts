@@ -2,22 +2,23 @@ import * as vscode from 'vscode';
 import { DisplayChange, FileNode, GroupNode } from '../view/nodes';
 
 /**
- * Works out which rows a command should act on.
+ * Working out which rows a command actually meant.
  *
- * VS Code passes context-menu commands the invoked item plus the selection, but
- * passes inline (hover toolbar) commands only the invoked item — so the live
- * view selection is consulted as a fallback, which is what makes an inline
- * button act on a whole multi-selection.
+ * VS Code hands context-menu commands the clicked item *and* the selection, but
+ * hands inline hover-toolbar commands only the clicked item. Without the
+ * fallback to the live view selection below, selecting twelve files and clicking
+ * the inline button would act on exactly one of them, which is maddening.
  */
 
 /**
- * Returns the file rows a command should act on, preferring the whole
- * multi-selection whenever the invoked row is part of it.
+ * The rows to act on: the whole selection, as long as the clicked row is part of
+ * it.
  *
- * Invoking a command on a row *outside* the current selection deliberately acts
- * on that row alone, matching how the built-in Source Control view behaves.
- * Returns undefined when nothing is selected, so the caller can fall back to a
- * quick pick.
+ * Click a row *outside* the selection and you get just that row — which sounds
+ * fussy written down, but is exactly what the built-in Source Control view does
+ * and what your hands already expect.
+ *
+ * Undefined means nothing was selected at all, so the caller can offer a picker.
  */
 export function selectedChanges(
   node: FileNode | undefined,
@@ -33,12 +34,12 @@ export function selectedChanges(
   if (chosen.length === 0) {
     return undefined;
   }
-  // The same file can be selected under both sections; act on it once.
+  // A file can be selected under both sections at once. Act on it once.
   const byKey = new Map(chosen.map(item => [item.displayChange.fileKey, item.displayChange]));
   return [...byKey.values()];
 }
 
-/** Returns the group a tree selection points at, used to retarget the commit panel. */
+/** Which group is the selection pointing at? Used to aim the commit panel. */
 export function selectedGroupId(selection: readonly unknown[]): string | undefined {
   for (const node of selection) {
     if (node instanceof GroupNode && node.group) return node.group.id;

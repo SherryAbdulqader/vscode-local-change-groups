@@ -1,19 +1,21 @@
 import { DEFAULT_GROUP_COLOR, isGroupColor, isGroupIcon, LocalGroup } from './groups';
 
 /**
- * The shape written to workspace storage, and the guard that reads it back.
+ * What we write to workspace storage, and the bouncer that reads it back.
  *
- * Stored state is untrusted input: it may predate a feature, or have been
- * hand-edited. Everything is re-validated on load, and anything unusable is
- * dropped rather than surfaced to the UI, so a bad value can never render as an
- * invisible icon or an assignment pointing at a group that no longer exists.
+ * Treat whatever comes out of storage as a rumour rather than a fact. It may
+ * have been written by a version of this extension that predates half these
+ * fields, or hand-edited by someone having a curious afternoon. So everything is
+ * re-checked on load and anything dubious is quietly dropped — the alternative
+ * is an invisible icon or a file assigned to a group that no longer exists, and
+ * good luck spotting either of those from a bug report.
  */
 export interface PersistedState {
   groups: LocalGroup[];
   assignments: Record<string, string>;
 }
 
-/** Returns safe persisted state when stored data is absent or malformed. */
+/** Reads stored state, or hands back an empty slate if it is unusable. */
 export function normalizePersistedState(value: unknown): PersistedState {
   if (!value || typeof value !== 'object') {
     return { groups: [], assignments: {} };
@@ -29,8 +31,9 @@ export function normalizePersistedState(value: unknown): PersistedState {
       }))
     : [];
 
-  // An assignment naming a group that did not survive validation would strand
-  // its file in no visible section at all, so those are discarded here.
+  // Drop assignments pointing at groups that did not survive the check above.
+  // A file assigned to a group that no longer exists renders nowhere at all,
+  // which from the outside looks exactly like the file vanishing.
   const validIds = new Set(groups.map(group => group.id));
   const assignments: Record<string, string> = {};
   if (candidate.assignments && typeof candidate.assignments === 'object') {
@@ -43,7 +46,7 @@ export function normalizePersistedState(value: unknown): PersistedState {
   return { groups, assignments };
 }
 
-/** Checks whether an unknown value is a valid local group. */
+/** The bare minimum for something to pass as a group. */
 function isLocalGroup(value: unknown): value is LocalGroup {
   if (!value || typeof value !== 'object') {
     return false;

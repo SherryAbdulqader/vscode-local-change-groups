@@ -8,7 +8,19 @@ export interface GitResult {
   stderr: Buffer;
 }
 
-/** Runs fixed Git commands with no shell and a sanitized environment. */
+/**
+ * Runs Git directly. No shell, ever.
+ *
+ * Everything goes through execFile with an argument array, so a file named
+ * something creative like `; rm -rf ~` is just a filename and not an incident.
+ * The environment gets every GIT_* variable stripped first, because inheriting
+ * someone's GIT_INDEX_FILE or GIT_DIR from an outer process is a great way to
+ * operate confidently on entirely the wrong repository.
+ *
+ * There is also a 24 KiB cap on the argument list: commit a large enough group
+ * and you would otherwise hit the OS limit, where the failure is far less
+ * legible than the message below.
+ */
 export class GitRunner {
   public constructor(private readonly executable: string, public readonly root: string) {
     if (!executable?.trim() || executable.includes('\0')) throw new Error('VS Code did not provide a safe Git executable path.');

@@ -6,11 +6,12 @@ import { pickChanges, pickColor, pickGroup, pickIcon, promptGroupName } from './
 import { selectedChanges } from './selection';
 
 /**
- * Commands that only touch private group metadata — never Git.
+ * Commands that rearrange your groups and nothing else.
  *
- * Nothing here can alter the repository, which is why none of them confirm
- * beyond deleting a group. Assignments are written in a single store call per
- * command so a multi-file action is one persisted write, not one per file.
+ * Not one of these can touch the repository, which is why only deleting a group
+ * bothers to confirm — everything else here is trivially undoable by doing it
+ * again. Each command writes through a single store call, so dropping forty
+ * files into a group is one save rather than forty.
  */
 export function registerGroupCommands(context: CommandContext): vscode.Disposable[] {
   const { store, provider, view, output } = context;
@@ -98,8 +99,8 @@ export function registerGroupCommands(context: CommandContext): vscode.Disposabl
       if (name === undefined) return;
       const color = await pickColor();
       if (!color) return;
-      // Creating and filling in one store call keeps a rejected duplicate name
-      // from leaving an empty group behind.
+      // Create and fill in one call, so a rejected duplicate name does not leave
+      // a sad empty group sitting there.
       const group = await store.createGroup(name, color, changes);
       provider.refresh();
       output.appendLine(`Created ${group.name} holding ${describeFileCount(changes.length)}`);

@@ -14,15 +14,17 @@ import { ChangeGroupsTreeProvider } from '../view/changeTree';
 import { DisplayChange, GroupNode } from '../view/nodes';
 
 /**
- * Every quick pick and input box the extension shows.
+ * Every quick pick and input box in the extension, in one place.
  *
- * Collected here so the command modules read as flow rather than as prompt
- * construction, and so wording stays consistent. Each returns `undefined` when
- * the user dismisses the prompt; callers treat that as "do nothing", never as an
- * error.
+ * Two reasons: the command modules stay readable as flow rather than as walls of
+ * prompt construction, and the wording stays consistent when it is all sitting
+ * next to itself.
+ *
+ * They all return undefined when dismissed. Pressing Escape is not an error, and
+ * callers should quietly do nothing rather than complain about it.
  */
 
-/** Prompts for one configured local group. */
+/** Pick a group. Nudges you to make one first if there are none. */
 export async function pickGroup(store: GroupStore, placeHolder: string): Promise<LocalGroup | undefined> {
   if (!placeHolder.trim()) {
     throw new Error('A picker prompt is required.');
@@ -39,7 +41,7 @@ export async function pickGroup(store: GroupStore, placeHolder: string): Promise
   return selection?.group;
 }
 
-/** Prompts for one or more changed files across all open repositories. */
+/** Pick some files, from anywhere across the open repositories. */
 export async function pickChanges(provider: ChangeGroupsTreeProvider, placeHolder: string): Promise<DisplayChange[]> {
   if (!placeHolder.trim()) {
     throw new Error('A picker prompt is required.');
@@ -60,7 +62,7 @@ export async function pickChanges(provider: ChangeGroupsTreeProvider, placeHolde
   return (selection ?? []).map(item => item.change);
 }
 
-/** Prompts for a group name, returning undefined when dismissed. */
+/** Ask for a group name. */
 export async function promptGroupName(title: string, prompt: string, value?: string): Promise<string | undefined> {
   return vscode.window.showInputBox({
     title,
@@ -70,7 +72,7 @@ export async function promptGroupName(title: string, prompt: string, value?: str
   });
 }
 
-/** Prompts for a predefined theme-aware group color. */
+/** Pick one of the eight colors. */
 export async function pickColor(current?: GroupColor): Promise<GroupColor | undefined> {
   const selection = await vscode.window.showQuickPick(
     GROUP_COLORS.map(color => ({
@@ -84,8 +86,11 @@ export async function pickColor(current?: GroupColor): Promise<GroupColor | unde
 }
 
 /**
- * Prompts for a group codicon. Each row previews the icon itself through the
- * `$(id)` label syntax, and the last row accepts any codicon id by hand.
+ * Pick an icon.
+ *
+ * Quick pick labels render `$(id)` as the icon itself, so every row previews
+ * what you are about to choose. The last row lets you type any codicon id, for
+ * when none of the sixteen is quite right.
  */
 export async function pickIcon(current?: string): Promise<string | undefined> {
   const active = current ?? DEFAULT_GROUP_ICON;
@@ -107,8 +112,8 @@ export async function pickIcon(current?: string): Promise<string | undefined> {
     title: 'Custom Group Icon',
     prompt: 'A VS Code codicon id, such as "beaker" or "symbol-event"',
     value: current,
-    // Validating live catches the likely mistake — typing "$(beaker)" — before
-    // it can be stored as an id that would silently render as nothing.
+    // Live validation, mostly to catch someone typing "$(beaker)" — an easy
+    // mistake, and one that otherwise stores fine and then renders as nothing.
     validateInput: value => {
       try {
         normalizeGroupIcon(value);
@@ -121,7 +126,7 @@ export async function pickIcon(current?: string): Promise<string | undefined> {
   return typed ? normalizeGroupIcon(typed) : undefined;
 }
 
-/** Prompts for a non-empty commit message tied to a selected group. */
+/** Ask for a commit message. Refuses to accept an empty one. */
 export async function promptCommitMessage(group: LocalGroup): Promise<string | undefined> {
   const message = await vscode.window.showInputBox({
     title: `Commit Group: ${group.name}`,
@@ -132,11 +137,11 @@ export async function promptCommitMessage(group: LocalGroup): Promise<string | u
 }
 
 /**
- * Resolves an explicit or picked named group to exactly one repository.
+ * Works out which group, in which repository, a command should act on.
  *
- * Invoked from a group row the repository is unambiguous. Invoked from the
- * Command Palette it is not, so with several repositories open this refuses
- * rather than guessing which one the user meant.
+ * From a group row this is obvious. From the Command Palette it is not, so with
+ * several repositories open we ask the user to go via a row rather than guessing
+ * and doing Git things to the wrong project.
  */
 export async function requireGroupNode(
   node: GroupNode | undefined,
@@ -152,7 +157,7 @@ export async function requireGroupNode(
   return new GroupNode(repositories[0], group);
 }
 
-/** Resolves a stored group id to exactly one repository's group row. */
+/** Same idea, but starting from an id the commit panel sent us. */
 export function groupNodeById(groupId: string, store: GroupStore, gitApi: GitApi | undefined): GroupNode {
   const group = store.getGroups().find(candidate => candidate.id === groupId);
   if (!group) throw new Error('Group not found.');

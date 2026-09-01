@@ -11,12 +11,12 @@ import { actionContext, CommandContext } from './context';
 import { groupNodeById } from './prompts';
 
 /**
- * Translates a commit panel button press into the same action a menu command
- * would run.
+ * Turns a commit panel button press into the same action a menu would run.
  *
- * The panel sends a group id and a message, never a resolved node, so the id is
- * looked up against live state here. That is what stops a stale page — one whose
- * group was renamed or deleted while it sat hidden — from acting on anything.
+ * The panel only ever sends a group id and a message, never a resolved node, so
+ * the id gets looked up against live state right here. A collapsed panel can sit
+ * around for a long time while groups get renamed and deleted underneath it —
+ * this is what stops a stale page from acting on a group that no longer exists.
  */
 export async function runPanelAction(
   context: CommandContext,
@@ -36,8 +36,8 @@ export async function runPanelAction(
     return;
   }
 
-  // The page disables the commit buttons on an empty group, but the message box
-  // is free text, so emptiness is re-checked rather than assumed.
+  // The page greys out the commit buttons for an empty group, but the message
+  // box is free text and the page is not the authority on anything. Check again.
   const trimmed = message.trim();
   if (!trimmed) {
     throw new Error('Enter a commit message.');

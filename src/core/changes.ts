@@ -2,15 +2,16 @@ import type { GitChange, GitRepository } from '../git/api';
 import { assignmentKey, relativeChangePath } from './repositoryPaths';
 
 /**
- * Reads the Git extension's four change lists into one deduplicated view.
+ * Flattens Git's four change lists into one entry per file.
  *
- * Git reports the same file more than once when it is both staged and edited
- * again, and reports a rename under two paths. Both are collapsed here so the
- * rest of the extension can treat one file as exactly one entry, while keeping
- * enough information to place it in the right section and to follow renames.
+ * Git will happily mention the same file twice — once staged, once edited again
+ * since — and reports a rename under both its old and new path. Everything
+ * downstream gets much simpler if one file means one row, so the merging happens
+ * here, once, keeping enough detail to still place the file in the right section
+ * and follow it through a rename.
  *
- * Only the `GitRepository` *type* is imported, so this module still carries no
- * runtime dependency on VS Code.
+ * Note the `import type`: TypeScript erases it, so this file carries no runtime
+ * dependency on VS Code and stays testable.
  */
 
 export type ChangeArea = 'Working Tree' | 'Staged' | 'Working Tree + Staged' | 'Merge';
@@ -19,14 +20,14 @@ export interface CollectedChange {
   repository: GitRepository;
   change: GitChange;
   relativePath: string;
-  /** The key for the file's current path, which an assignment is written to. */
+  /** Where the file lives now. This is the key an assignment gets written to. */
   fileKey: string;
-  /** The current key plus any rename alias, all of which a move must clear. */
+  /** Current key plus any old-path alias. A move has to clear every one. */
   assignmentKeys: string[];
   area: ChangeArea;
 }
 
-/** Resolves a current or original rename key to its local group. */
+/** Finds the file's group, trying its old path too in case it was renamed. */
 export function assignedGroupId(change: CollectedChange, lookup: (key: string) => string | undefined): string | undefined {
   for (const key of change.assignmentKeys) {
     const groupId = lookup(key);
@@ -35,7 +36,7 @@ export function assignedGroupId(change: CollectedChange, lookup: (key: string) =
   return undefined;
 }
 
-/** Collects and deduplicates changes exposed by the Git API. */
+/** Reads every change Git knows about, one entry per file. */
 export function collectChanges(repository: GitRepository): CollectedChange[] {
   if (!repository?.rootUri?.fsPath) {
     throw new Error('A valid Git repository is required.');
@@ -56,7 +57,7 @@ export function collectChanges(repository: GitRepository): CollectedChange[] {
           ? { ...existing, assignmentKeys: [...new Set([...existing.assignmentKeys, ...assignmentKeys])], area: mergeChangeArea(existing.area, area) }
           : { repository, change, relativePath, fileKey, assignmentKeys: [...new Set(assignmentKeys)], area });
       } catch {
-        // Git API entries outside the repository are not valid group candidates.
+        // Git occasionally mentions paths outside the repo. Not ours to group.
       }
     }
   };
@@ -67,7 +68,7 @@ export function collectChanges(repository: GitRepository): CollectedChange[] {
   return [...byPath.values()];
 }
 
-/** Combines Git areas while giving merge conflicts precedence. */
+/** Folds two areas together. A conflict outranks everything else. */
 function mergeChangeArea(existing: ChangeArea, incoming: ChangeArea): ChangeArea {
   if (existing === 'Merge' || incoming === 'Merge') {
     return 'Merge';

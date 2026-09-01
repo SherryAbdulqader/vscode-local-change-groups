@@ -3,29 +3,30 @@ import { groupColorId } from '../../core/changeLabels';
 import type { GroupColor } from '../../core/groups';
 
 /**
- * The commit panel's HTML document.
+ * The commit panel, as one page.
  *
- * Isolated from the provider so the markup, styles, and page script can be read
- * as one page rather than buried in class methods.
+ * Kept out of the provider so the markup, styles, and script read as a document
+ * instead of being buried in class methods.
  *
- * Two rules hold this together:
+ * Two rules keep it honest:
  *
- * - **Nothing loads from outside.** The CSP is `default-src 'none'` with a
- *   per-render nonce for the one inline style and one inline script, and the
- *   provider declares no `localResourceRoots`. There is no bundler step and no
- *   asset to ship.
- * - **Every color comes from VS Code.** Styling uses `--vscode-*` custom
- *   properties, including the extension's own contributed group colors, so the
- *   panel tracks the active theme exactly instead of approximating it.
+ * **Nothing loads from anywhere.** CSP is `default-src 'none'` with a per-render
+ * nonce for the single inline style and single inline script, and the provider
+ * hands it no localResourceRoots at all. No bundler, no CDN, no asset to ship,
+ * nothing to audit at 2am.
+ *
+ * **Every color comes from VS Code.** All `--vscode-*` custom properties,
+ * including our own contributed group colors, so the panel actually tracks the
+ * user's theme rather than doing a passable impression of it.
  */
 
-/** Returns the CSS color expression for a group's contributed theme color. */
+/** Our group color as something CSS will accept, with a sensible fallback. */
 export function panelColorVariable(color: GroupColor): string {
   const variable = `--vscode-${groupColorId(color).replace(/\./g, '-')}`;
   return `var(${variable}, var(--vscode-descriptionForeground))`;
 }
 
-/** Builds the panel document with a fresh script nonce. */
+/** Builds the page. New nonce every time. */
 export function commitPanelHtml(): string {
   const nonce = randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
@@ -129,17 +130,18 @@ export function commitPanelHtml(): string {
 
   let branch = '';
 
-  // Drafts live in webview state rather than the host: VS Code tears the page
-  // down whenever the section is hidden, and retainContextWhenHidden would keep
-  // a whole hidden webview alive just to hold a string.
+  // Drafts live here rather than in the extension host because VS Code destroys
+  // this page whenever the section is collapsed. The alternative,
+  // retainContextWhenHidden, keeps an entire invisible webview in memory for the
+  // sake of remembering a string, which seems a poor trade.
   const drafts = Object.assign({}, (vscode.getState() || {}).drafts);
 
-  /** Keeps typed messages per group across visibility changes. */
+  /** Remember what was typed, per group, so collapsing the panel is not costly. */
   function persist() {
     vscode.setState({ drafts: drafts, selected: groupSelect.value });
   }
 
-  /** Reflects the selected group's color, count, and saved draft. */
+  /** Redraws everything that depends on which group is selected. */
   function applySelection() {
     const option = groupSelect.selectedOptions[0];
     if (!option) return;
@@ -157,7 +159,7 @@ export function commitPanelHtml(): string {
     message.value = drafts[groupSelect.value] || '';
   }
 
-  /** Sends one action, letting the extension host validate it. */
+  /** Fires a request at the host, which will check it properly. */
   function submit(action) {
     const groupId = groupSelect.value;
     if (!groupId) return;

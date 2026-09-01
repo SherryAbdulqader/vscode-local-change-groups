@@ -1,16 +1,16 @@
-/** Small shared text helpers used across layers. */
+/** Odds and ends that everything needs and nothing wants to own. */
 
-/** Describes a file count for log lines, prompts, and badges. */
+/** "1 file" / "12 files". Pluralisation, the eternal chore. */
 export function describeFileCount(count: number): string {
   return `${count} file${count === 1 ? '' : 's'}`;
 }
 
-/** Converts unknown thrown values into concise messages. */
+/** Gets a message out of whatever was thrown. People throw strings. It happens. */
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Parses the standard newline-separated uri-list payload into raw entries. */
+/** Pulls the URIs out of a dropped text/uri-list payload. */
 export function parseUriListEntries(value: string): string[] {
   return value
     .split(/\r?\n/)

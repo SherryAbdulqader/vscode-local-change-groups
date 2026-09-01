@@ -1,17 +1,16 @@
 import type { ChangeArea } from './changes';
 
-/**
- * The Staged Changes / Changes split, mirroring the built-in Source Control view.
- */
+/** The Staged Changes / Changes split, borrowed from the built-in view. */
 
 export type ChangeSection = 'staged' | 'unstaged';
 
 /**
- * Decides which section a change belongs to.
+ * Which section does this change belong in?
  *
- * Membership is deliberately not exclusive: a file that is staged and then
- * edited again is genuinely present in both the index and the working tree, and
- * the built-in Changes list shows it twice for exactly that reason.
+ * A file can answer yes to both, and that is not a bug. Stage a file, edit it
+ * again, and it really does exist in two places at once: the index holds one
+ * version, your disk holds another. The built-in view lists it twice for exactly
+ * this reason, so we do too.
  */
 export function isInSection(area: ChangeArea, section: ChangeSection): boolean {
   return section === 'staged'
@@ -19,7 +18,7 @@ export function isInSection(area: ChangeArea, section: ChangeSection): boolean {
     : area !== 'Staged';
 }
 
-/** Returns the header shown for one section. */
+/** The header text for a section. */
 export function sectionLabel(section: ChangeSection): string {
   return section === 'staged' ? 'Staged Changes' : 'Changes';
 }

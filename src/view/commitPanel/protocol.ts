@@ -1,18 +1,19 @@
 import type { LocalGroup } from '../../core/groups';
 
 /**
- * The contract between the commit panel webview and the extension host.
+ * What the commit panel and the extension host are allowed to say to each other.
  *
- * A webview is a separate, scriptable document, so everything arriving from it
- * is untrusted input. `parseRequest` is the single gate: nothing reaches a Git
- * action without passing it, and the host re-resolves the group id afterwards
- * rather than trusting any state the page believes it holds.
+ * A webview is a separate scriptable document, so treat anything coming back
+ * from it as input from a stranger. `parseRequest` is the only door: nothing
+ * reaches a Git action without going through it, and even then the host looks
+ * the group id up again rather than believing whatever the page thinks it is
+ * holding.
  */
 
-/** The Git action a panel button asks for. */
+/** Which button was pressed. */
 export type PanelAction = 'stage' | 'unstage' | 'commit' | 'push';
 
-/** One group as presented by the commit panel. */
+/** A group, as the panel needs to draw it. */
 export interface PanelGroup {
   id: string;
   name: string;
@@ -20,22 +21,22 @@ export interface PanelGroup {
   count: number;
 }
 
-/** State the panel needs to render itself. */
+/** Everything the panel needs to render one frame. */
 export interface PanelState {
   groups: PanelGroup[];
   selectedGroupId?: string;
   branch?: string;
 }
 
-/** Runs one panel action, reporting failures to the caller's handler. */
+/** Does the actual work. Supplied by the host; the panel never sees Git. */
 export type PanelRunner = (action: PanelAction, groupId: string, message: string) => Promise<void>;
 
-/** A validated message from the webview. */
+/** A message that has been checked and can be trusted. */
 export type PanelRequest =
   | { type: 'ready' }
   | { type: 'run'; action: PanelAction; groupId: string; message: string };
 
-/** Validates a message posted by the panel before acting on it. */
+/** The door. Anything that does not fit exactly gets dropped on the floor. */
 export function parseRequest(value: unknown): PanelRequest | undefined {
   if (!value || typeof value !== 'object') {
     return undefined;

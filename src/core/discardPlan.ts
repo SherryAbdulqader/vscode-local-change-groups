@@ -2,32 +2,34 @@ import type { ChangeArea } from './changes';
 import { isInSection } from './sections';
 
 /**
- * Works out what discarding a selection would actually do, before anything is
- * destroyed.
+ * Works out what a discard would destroy, before it destroys it.
  *
- * Discard has two very different outcomes — a tracked edit is recoverable from
- * the last commit, an untracked file is gone for good — so they are counted
- * separately and stated separately in the confirmation. Reporting one number
- * would understate the risk.
+ * "Discard" covers two very different fates. A tracked edit goes back to the
+ * last commit, so at worst you lose an afternoon. An untracked file is deleted
+ * from disk and is simply gone. Rolling both into a single number in the
+ * confirmation would be technically accurate and genuinely misleading, so they
+ * get counted separately and said out loud separately.
  */
 
-/** What a discard would do to each selected change. */
+/** The three fates awaiting a selection. */
 export interface DiscardPartition<T> {
-  /** Tracked edits that revert to the last committed content. */
+  /** Tracked edits. These come back from the last commit. */
   restore: T[];
-  /** Untracked files that are deleted from disk outright. */
+  /** Untracked files. These are gone. Actually gone. */
   remove: T[];
-  /** Staged-only entries a working-tree discard must not touch. */
+  /** Staged with nothing else pending, so a working-tree discard leaves them be. */
   skip: T[];
 }
 
 /**
- * Splits changes by what discarding does to them. A file staged with no further
- * working-tree edit is skipped rather than silently unstaged, because unstaging
- * is not what "discard" promises.
+ * Sorts a selection into those three buckets.
  *
- * The accessors keep this free of any concrete change type, so it is testable
- * with plain objects.
+ * A file that is staged with no further edits gets skipped rather than unstaged.
+ * Whoever clicked Discard did not ask us to rearrange their index, and quietly
+ * doing it anyway is how a button loses people's trust.
+ *
+ * The accessor arguments mean this never has to know about our change type, so
+ * the tests can call it with plain objects.
  */
 export function partitionForDiscard<T>(
   items: readonly T[],

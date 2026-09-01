@@ -6,27 +6,30 @@ import { GitApi, GitRepository } from '../git/api';
 import { DisplayChange, FileNode, GroupNode, RepositoryNode, SectionNode, TreeNode } from './nodes';
 import { fileItem, groupItem, repositoryItem, sectionItem } from './treeItems';
 
-/** Collapses bursts of Git status events into one repaint. */
+/** Long enough to swallow a burst of Git events, short enough to feel instant. */
 const REFRESH_DEBOUNCE_MS = 120;
 
-/** Bucket key standing in for the Ungrouped section, never a real group id. */
+/** Stands in for Ungrouped. Safe because a real group id is always a UUID. */
 const UNGROUPED_KEY = '';
 
 /**
- * Supplies the tree's contents and keeps them in step with Git.
+ * Decides what is in the tree, and keeps it in step with Git.
  *
- * Two things here exist purely for responsiveness on large repositories:
+ * Two things in here exist purely so this stays pleasant on a big repository.
+ * Please do not tidy them away.
  *
- * - Git status events are debounced, because the Git extension fires them on
- *   every save and every internal poll, and each one would otherwise rebuild the
- *   whole tree.
- * - Changes are bucketed by group **once per repaint** and cached. Every group
- *   header needs a count and every group body needs a list; without the cache
- *   `collectChanges` — which normalizes a path per file — would run roughly
- *   twice per group, so a repository with many groups and many changed files
- *   would re-derive the same keys thousands of times for one repaint.
+ * **The debounce.** The Git extension fires status events on every save, every
+ * internal poll, and generally whenever the mood takes it. Rebuilding the tree
+ * on each one turns a branch switch into a flicker show.
  *
- * The cache is invalidated by `refresh()`, which every mutation already calls.
+ * **The grouping cache.** Every group header wants a count and every group body
+ * wants a list, so without this, `collectChanges` — which normalizes a path per
+ * file — runs about twice per group. Eight groups and three hundred changed
+ * files means several thousand path resolutions to draw one tree, which you can
+ * feel. Now it runs once and everything reads the result.
+ *
+ * The cache is cleared by `refresh()`, which every mutation already calls, so
+ * there is no separate invalidation to keep in sync.
  */
 export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscode.Disposable {
   private readonly changedEmitter = new vscode.EventEmitter<TreeNode | undefined | void>();
@@ -36,7 +39,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   public readonly onDidChangeTreeData = this.changedEmitter.event;
 
-  /** Creates the provider and subscribes to public Git change events. */
+  /** Subscribes to every open repository, and to repositories opening later. */
   public constructor(private readonly gitApi: GitApi | undefined, private readonly store: GroupStore) {
     if (!store) {
       throw new Error('A group store is required.');
@@ -59,7 +62,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     }
   }
 
-  /** Releases Git and tree event subscriptions. */
+  /** Drops every subscription and any repaint still pending. */
   public dispose(): void {
     this.cancelScheduledRefresh();
     this.groupingCache.clear();
@@ -72,14 +75,14 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     }
   }
 
-  /** Discards cached grouping and rebuilds the visible tree from Git state. */
+  /** Throws away the cache and redraws. */
   public refresh(): void {
     this.cancelScheduledRefresh();
     this.groupingCache.clear();
     this.changedEmitter.fire();
   }
 
-  /** Returns the VS Code presentation for a tree node. */
+  /** Hands a node to treeItems.ts, with any count it needs. */
   public getTreeItem(element: TreeNode): vscode.TreeItem {
     if (element instanceof RepositoryNode) {
       return repositoryItem(element);
@@ -93,7 +96,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return fileItem(element);
   }
 
-  /** Returns repository, section, group, or file children. */
+  /** The children of a row — or the top level, when asked for nothing. */
   public getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
       const repositories = this.gitApi?.repositories ?? [];
@@ -115,7 +118,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return [];
   }
 
-  /** Returns the parent node so the view can reveal a file row. */
+  /** Walks back up the tree. VS Code needs this to reveal a row. */
   public getParent(element: TreeNode): TreeNode | undefined {
     if (element instanceof FileNode) {
       const group = element.groupId
@@ -132,7 +135,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return undefined;
   }
 
-  /** Returns every changed file currently known across repositories. */
+  /** Every changed file we know about, across every open repository. */
   public getAllChanges(): DisplayChange[] {
     return (this.gitApi?.repositories ?? [])
       .flatMap(repository => [...this.grouping(repository).values()])
@@ -140,10 +143,11 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   }
 
   /**
-   * Returns every change assigned to a group, ignoring sections.
+   * Every change in a group, sections ignored.
    *
-   * Git actions must always act on a group as a whole, so this deliberately does
-   * not narrow by section even when invoked from a row inside one.
+   * Deliberate: a Git action on a group should always mean the whole group, even
+   * when you started it from a row sitting under Staged Changes. Staging half a
+   * group because of where you right-clicked would be a nasty surprise.
    */
   public getGroupChanges(node: GroupNode): DisplayChange[] {
     if (!node.group) throw new Error('Select a named group.');
@@ -151,9 +155,10 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   }
 
   /**
-   * Splits into Staged Changes and Changes once anything is staged, matching the
-   * Source Control view. With a clean index the split is noise, so groups sit at
-   * the top level instead.
+   * Shows the Staged / Changes split only once something is actually staged.
+   *
+   * With a clean index those two headers are pure noise, so the groups just sit
+   * at the top level until they earn their place.
    */
   private topLevelNodes(repository: GitRepository): TreeNode[] {
     return this.hasStagedChanges(repository)
@@ -161,7 +166,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
       : this.groupNodes(repository, undefined);
   }
 
-  /** Builds the group rows shown under one repository or section. */
+  /** The group rows under a repository, or under one section of it. */
   private groupNodes(repository: GitRepository, section: ChangeSection | undefined): GroupNode[] {
     return [
       ...this.store.getGroups().map(group => new GroupNode(repository, group, section)),
@@ -169,19 +174,19 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     ];
   }
 
-  /** Returns a group row's files, narrowed to its section when it has one. */
+  /** A group's files, narrowed to its section if it is in one. */
   private visibleChanges(node: GroupNode): DisplayChange[] {
     const changes = this.changesForGroup(node.repository, node.group?.id);
     return node.section ? changes.filter(change => isInSection(change.area, node.section!)) : changes;
   }
 
-  /** Totals one section across every group, for its header count. */
+  /** Adds up a section across all its groups, for the number in the header. */
   private sectionCount(node: SectionNode): number {
     return this.groupNodes(node.repository, node.section)
       .reduce((total, group) => total + this.visibleChanges(group).length, 0);
   }
 
-  /** Reports whether the index holds anything this view would show. */
+  /** Is anything staged? Decides whether the sections appear at all. */
   private hasStagedChanges(repository: GitRepository): boolean {
     for (const bucket of this.grouping(repository).values()) {
       if (bucket.some(change => isInSection(change.area, 'staged'))) {
@@ -191,26 +196,26 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return false;
   }
 
-  /** Returns the repository row above a top-level node, if one is rendered. */
+  /** The repository row above a top-level node, if we are drawing one. */
   private rootParent(repository: GitRepository): TreeNode | undefined {
     const repositories = this.gitApi?.repositories ?? [];
     return repositories.length === 1 ? undefined : new RepositoryNode(repository);
   }
 
-  /** Watches one repository for status changes. */
+  /** Starts listening to one repository, if we are not already. */
   private watchRepository(repository: GitRepository): void {
     if (!this.repositorySubscriptions.has(repository)) {
       this.repositorySubscriptions.set(repository, repository.state.onDidChange(() => this.scheduleRefresh()));
     }
   }
 
-  /** Coalesces rapid Git status events into a single delayed repaint. */
+  /** Restarts the clock. A burst of events ends up as one repaint. */
   private scheduleRefresh(): void {
     this.cancelScheduledRefresh();
     this.refreshTimer = setTimeout(() => this.refresh(), REFRESH_DEBOUNCE_MS);
   }
 
-  /** Drops a pending repaint so it cannot fire after a newer one. */
+  /** Cancels a pending repaint so a stale one cannot land after a fresh one. */
   private cancelScheduledRefresh(): void {
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
@@ -218,12 +223,12 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     }
   }
 
-  /** Returns the changes assigned to one group, from the per-repaint grouping. */
+  /** One group's changes, straight out of the cache. */
   private changesForGroup(repository: GitRepository, groupId: string | undefined): DisplayChange[] {
     return this.grouping(repository).get(groupId ?? UNGROUPED_KEY) ?? [];
   }
 
-  /** Buckets a repository's changes by group, once per repaint. See the class note. */
+  /** Buckets a repository's changes by group. Once per repaint — see the class note. */
   private grouping(repository: GitRepository): Map<string, DisplayChange[]> {
     const cached = this.groupingCache.get(repository);
     if (cached) {

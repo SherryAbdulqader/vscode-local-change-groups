@@ -9,33 +9,48 @@ export interface MementoLike {
   update(key: string, value: unknown): Thenable<void>;
 }
 
-/** One file's current assignment key plus any rename aliases to clear. */
+/** A file's current key, plus any old-path aliases a move needs to clear. */
 export interface AssignmentTarget {
   fileKey: string;
   assignmentKeys: readonly string[];
 }
 
-/** Manages private group metadata in VS Code workspace state. */
+/**
+ * Group metadata, kept in workspace state and nowhere near your repository.
+ *
+ * Two rules hold this together. Writes go through one queue, so two commands
+ * racing cannot interleave and lose each other's changes. And memory is only
+ * updated *after* storage says yes — if the write fails, the UI keeps showing
+ * the truth rather than something that was never saved.
+ *
+ * The bulk methods are not premature optimisation: dropping fifty files on a
+ * group used to be fifty separate persisted writes.
+ */
 export class GroupStore {
   private state: PersistedState;
   private writeQueue: Promise<void> = Promise.resolve();
 
-  /** Loads group metadata from the provided workspace memento. */
+  /** Loads whatever is in storage, re-validated on the way in. */
   public constructor(private readonly memento: MementoLike) {
     if (!memento || typeof memento.get !== 'function' || typeof memento.update !== 'function') throw new Error('A valid workspace memento is required.');
     this.state = normalizePersistedState(memento.get<unknown>(STORAGE_KEY));
   }
 
-  /** Returns a copy of all configured groups. */
+  /** Copies, not references — callers have been known to mutate. */
   public getGroups(): LocalGroup[] { return this.state.groups.map(group => ({ ...group })); }
 
-  /** Returns the assigned group ID for a file key. */
+  /** Which group owns this file, if any. */
   public getAssignment(fileKey: string): string | undefined {
     if (!fileKey.trim()) throw new Error('A file key is required.');
     return this.state.assignments[fileKey];
   }
 
-  /** Creates a uniquely named group and optionally fills it in the same write. */
+  /**
+   * Makes a group, optionally filling it in the same write.
+   *
+   * Doing both at once is what stops a rejected duplicate name from leaving an
+   * empty group lying around.
+   */
   public async createGroup(
     name: string,
     color: GroupColor = DEFAULT_GROUP_COLOR,
@@ -52,7 +67,7 @@ export class GroupStore {
     });
   }
 
-  /** Renames and persists an existing group. */
+  /** Renames a group, refusing a name another group already has. */
   public async renameGroup(groupId: string, name: string): Promise<void> {
     const normalized = normalizeGroupName(name);
     await this.mutate(next => {
@@ -62,19 +77,19 @@ export class GroupStore {
     });
   }
 
-  /** Changes and persists an existing group's theme-aware color. */
+  /** Repaints a group. */
   public async setGroupColor(groupId: string, color: GroupColor): Promise<void> {
     if (!isGroupColor(color)) throw new Error('Select a supported group color.');
     await this.mutate(next => { this.requireGroup(next, groupId).color = color; });
   }
 
-  /** Changes and persists an existing group's codicon. */
+  /** Swaps a group's icon. */
   public async setGroupIcon(groupId: string, icon: string): Promise<void> {
     const normalized = normalizeGroupIcon(icon);
     await this.mutate(next => { this.requireGroup(next, groupId).icon = normalized; });
   }
 
-  /** Deletes a group and returns its files to Ungrouped. */
+  /** Deletes a group. Its files fall back to Ungrouped; nothing on disk moves. */
   public async deleteGroup(groupId: string): Promise<void> {
     await this.mutate(next => {
       this.requireGroup(next, groupId);
@@ -83,7 +98,7 @@ export class GroupStore {
     });
   }
 
-  /** Assigns or moves a file to an existing group. */
+  /** Puts one file in a group. */
   public async assign(fileKey: string, groupId: string): Promise<void> {
     if (!fileKey.trim()) throw new Error('A file key is required.');
     await this.mutate(next => {
@@ -92,12 +107,12 @@ export class GroupStore {
     });
   }
 
-  /** Clears rename aliases and assigns only the current path in one write. */
+  /** One file, aliases cleared, one write. Thin wrapper over the bulk version. */
   public async moveAssignment(fileKeys: string[], currentKey: string, groupId: string): Promise<void> {
     await this.moveAssignments([{ fileKey: currentKey, assignmentKeys: fileKeys }], groupId);
   }
 
-  /** Moves many files into one group in a single persisted write. */
+  /** Moves a whole batch of files in a single persisted write. */
   public async moveAssignments(targets: readonly AssignmentTarget[], groupId: string): Promise<void> {
     if (!targets.length) throw new Error('At least one file is required.');
     validateTargets(targets);
@@ -107,19 +122,26 @@ export class GroupStore {
     });
   }
 
-  /** Removes a file assignment without changing the file. */
+  /** Forgets one assignment. The file itself is untouched. */
   public async unassign(fileKey: string): Promise<void> {
     if (!fileKey.trim()) throw new Error('A file key is required.');
     await this.mutate(next => { delete next.assignments[fileKey]; });
   }
 
-  /** Removes current and rename-alias assignments in one write. */
+  /** Forgets a batch of assignments, aliases included, in one write. */
   public async unassignAll(fileKeys: string[]): Promise<void> {
     if (!fileKeys.length || fileKeys.some(key => !key.trim())) throw new Error('Valid file keys are required.');
     await this.mutate(next => { for (const key of fileKeys) delete next.assignments[key]; });
   }
 
-  /** Serializes immutable writes and publishes memory only after persistence succeeds. */
+  /**
+   * The one place state actually changes.
+   *
+   * Every mutation is queued behind the last, applied to a copy, and only
+   * published to memory once storage has confirmed. That ordering is the whole
+   * trick: if the write throws, the caller hears about it and in-memory state
+   * never drifted from what is on disk.
+   */
   private mutate<T>(change: (next: PersistedState) => T): Promise<T> {
     let resolveResult!: (value: T | PromiseLike<T>) => void;
     let rejectResult!: (reason?: unknown) => void;
@@ -152,7 +174,7 @@ export class GroupStore {
   }
 }
 
-/** Rejects targets that do not name a current file plus its rename aliases. */
+/** Catches empty or blank keys before they reach the assignment map. */
 function validateTargets(targets: readonly AssignmentTarget[]): void {
   for (const target of targets) {
     if (!target?.fileKey?.trim() || !target.assignmentKeys?.length || target.assignmentKeys.some(key => !key.trim())) {
@@ -161,7 +183,7 @@ function validateTargets(targets: readonly AssignmentTarget[]): void {
   }
 }
 
-/** Clears rename aliases and points every current path at one group. */
+/** Clears each file's old aliases, then points its current path at the group. */
 function applyAssignments(state: PersistedState, targets: readonly AssignmentTarget[], groupId: string): void {
   for (const target of targets) {
     for (const key of target.assignmentKeys) delete state.assignments[key];

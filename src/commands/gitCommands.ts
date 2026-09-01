@@ -11,16 +11,16 @@ import { actionContext, CommandContext, runCommand } from './context';
 import { pickChanges, promptCommitMessage, requireGroupNode } from './prompts';
 import { selectedChanges } from './selection';
 
-/** Git status for an untracked file, which has no diff to open. */
+/** Git's status number for untracked. There is nothing to diff it against. */
 const UNTRACKED = 7;
 
 /**
  * Commands that reach Git.
  *
- * Each one only resolves *what* to act on and gathers any input needed, then
- * hands off to `services/changeActions`. Confirmations and the repository lock
- * live there, so these stay thin and the commit panel gets identical behavior
- * through the same functions.
+ * Each one works out *what* to act on, collects any input, and then gets out of
+ * the way. The confirmations and the repository lock live in
+ * services/changeActions, which is what lets the commit panel share this
+ * behavior exactly rather than growing its own slightly different version.
  */
 export function registerGitCommands(context: CommandContext): vscode.Disposable[] {
   const { store, provider, view, gitApi, output } = context;
@@ -31,7 +31,7 @@ export function registerGitCommands(context: CommandContext): vscode.Disposable[
         throw new Error('Select a changed file to open.');
       }
       const { change } = node.displayChange;
-      // An untracked file has no committed side to diff against, so open it plainly.
+      // Nothing committed to compare against, so just open the file.
       if (change.status === UNTRACKED) {
         await vscode.commands.executeCommand('vscode.open', change.uri);
       } else {

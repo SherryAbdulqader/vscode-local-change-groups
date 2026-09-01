@@ -7,26 +7,28 @@ import { ChangeGroupsTreeProvider } from '../view/changeTree';
 import { DisplayChange, GroupNode } from '../view/nodes';
 
 /**
- * Everything that changes Git state, in one place.
+ * Everything that touches Git, in one file.
  *
- * These are the operations themselves: they assume the caller has already
- * decided *what* to act on, and they own the confirmations, the repository lock,
- * and the result messages. Both the command palette / menus and the commit panel
- * call in here, so a given action behaves identically no matter how it was
- * started — the panel cannot reach a shortened path.
+ * These assume the caller has already worked out *what* to act on. What they own
+ * is the part you do not want duplicated: the confirmations, the repository
+ * lock, and the messages afterwards.
  *
- * Every function refreshes the tree on success rather than relying on the Git
- * extension's own event, so the view updates immediately.
+ * The menus and the commit panel both come through here, which is the point —
+ * two entry points, one implementation, so the panel cannot quietly acquire a
+ * shortcut past a confirmation that the menu route still shows.
+ *
+ * Each one refreshes the tree itself rather than waiting for Git's own event,
+ * so the view moves the instant the work is done.
  */
 
-/** What an action needs from the host to report itself. */
+/** The bits of the host an action needs to do its job and say so. */
 export interface ActionContext {
   provider: ChangeGroupsTreeProvider;
   output: vscode.OutputChannel;
   gitPath: string;
 }
 
-/** Stages exactly one group's files. */
+/** Stages one group. Nothing else in the repository is touched. */
 export async function stageGroup(context: ActionContext, selected: GroupNode): Promise<void> {
   const changes = context.provider.getGroupChanges(selected);
   const plan = buildOperationPlan(selected.repository, changes.map(item => item.change), 'stage');
@@ -35,7 +37,7 @@ export async function stageGroup(context: ActionContext, selected: GroupNode): P
   void vscode.window.showInformationMessage(`Staged only group "${selected.group!.name}".`);
 }
 
-/** Commits exactly one group's files with an already-resolved message. */
+/** Commits one group. The message has already been collected by this point. */
 export async function commitGroup(context: ActionContext, selected: GroupNode, message: string): Promise<void> {
   const plan = buildOperationPlan(selected.repository, context.provider.getGroupChanges(selected).map(item => item.change), 'commit');
   await executeGroupOperation(selected.repository, plan, context.gitPath, message);
@@ -43,7 +45,7 @@ export async function commitGroup(context: ActionContext, selected: GroupNode, m
   void vscode.window.showInformationMessage(`Committed only group "${selected.group!.name}".`);
 }
 
-/** Confirms, then commits and pushes exactly one group's files. */
+/** Commits one group and pushes it, after asking whether you meant it. */
 export async function commitAndPushGroup(context: ActionContext, selected: GroupNode, message: string): Promise<void> {
   const plan = buildOperationPlan(selected.repository, context.provider.getGroupChanges(selected).map(item => item.change), 'push');
   const confirmation = await vscode.window.showWarningMessage(
@@ -55,8 +57,9 @@ export async function commitAndPushGroup(context: ActionContext, selected: Group
   try {
     await executeGroupOperation(selected.repository, plan, context.gitPath, message, true);
   } catch (error) {
-    // A failure here may be the push rather than the commit, and the difference
-    // matters: the work is not lost, it is sitting in a local commit.
+    // This might have been the push failing rather than the commit, and that
+    // distinction matters a lot to whoever is reading the error: the work is not
+    // gone, it is sitting in a perfectly good local commit.
     throw new Error(`${errorMessage(error)} If the commit succeeded, it remains local and can be pushed after resolving the problem.`);
   }
   context.provider.refresh();
@@ -64,8 +67,11 @@ export async function commitAndPushGroup(context: ActionContext, selected: Group
 }
 
 /**
- * Removes files from the index without touching the working tree. Entries that
- * are not staged are ignored rather than treated as an error for the whole batch.
+ * Takes files back out of the index. Your working tree is not touched.
+ *
+ * Files in the selection that were not staged are simply skipped — unstaging a
+ * half-staged group should do the obvious thing, not refuse the whole batch over
+ * the files that were never staged to begin with.
  */
 export async function unstageChanges(
   context: ActionContext,
@@ -84,8 +90,10 @@ export async function unstageChanges(
 }
 
 /**
- * Discards working-tree changes after a modal that states deletions separately
- * from reverts, because only one of the two is recoverable.
+ * Throws away working-tree changes, after being very clear about what that means.
+ *
+ * The confirmation counts reverts and deletions separately because only one of
+ * them is recoverable, and the difference is worth a sentence.
  */
 export async function discardChanges(
   context: ActionContext,
@@ -119,9 +127,10 @@ export async function discardChanges(
 }
 
 /**
- * Groups a selection by repository and runs one batched Git call per repository,
- * holding that repository's lock so the call cannot interleave with a group
- * stage, commit, or push.
+ * One batched Git call per repository, each under that repository's lock.
+ *
+ * The lock is what stops this from interleaving with a group stage or commit
+ * that is halfway through rearranging the index.
  */
 async function forEachRepository(
   changes: readonly DisplayChange[],
