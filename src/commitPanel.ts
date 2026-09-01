@@ -4,7 +4,7 @@ import { LocalGroup } from './model';
 import { groupColorId } from './presentation';
 
 /** The Git action a panel button asks for. */
-export type PanelAction = 'stage' | 'commit' | 'push';
+export type PanelAction = 'stage' | 'unstage' | 'commit' | 'push';
 
 /** One group as presented by the commit panel. */
 export interface PanelGroup {
@@ -167,11 +167,11 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.D
   button:hover:enabled { background: var(--vscode-button-hoverBackground); }
   button:disabled { opacity: 0.4; cursor: default; }
   .row { display: flex; gap: 6px; }
-  .row button {
+  .row button, .secondary {
     color: var(--vscode-button-secondaryForeground);
     background: var(--vscode-button-secondaryBackground);
   }
-  .row button:hover:enabled { background: var(--vscode-button-secondaryHoverBackground); }
+  .row button:hover:enabled, .secondary:hover:enabled { background: var(--vscode-button-secondaryHoverBackground); }
   .empty { color: var(--vscode-descriptionForeground); padding: 4px 0; }
   [hidden] { display: none !important; }
 </style>
@@ -186,8 +186,9 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.D
     <button id="commit">&#10003; Commit Group</button>
     <div class="row">
       <button id="stage">Stage</button>
-      <button id="push">Commit &amp; Push</button>
+      <button id="unstage">Unstage</button>
     </div>
+    <button id="push" class="secondary">Commit &amp; Push</button>
   </div>
   <div id="empty" class="empty" hidden>Create a group to commit it on its own.</div>
 <script nonce="${nonce}">
@@ -200,6 +201,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.D
   const message = document.getElementById('message');
   const commitButton = document.getElementById('commit');
   const stageButton = document.getElementById('stage');
+  const unstageButton = document.getElementById('unstage');
   const pushButton = document.getElementById('push');
 
   let branch = '';
@@ -223,6 +225,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.D
     const enabled = count > 0;
     commitButton.disabled = !enabled;
     stageButton.disabled = !enabled;
+    unstageButton.disabled = !enabled;
     pushButton.disabled = !enabled;
     message.value = drafts[groupSelect.value] || '';
   }
@@ -244,6 +247,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider, vscode.D
   });
   commitButton.addEventListener('click', function () { submit('commit'); });
   stageButton.addEventListener('click', function () { submit('stage'); });
+  unstageButton.addEventListener('click', function () { submit('unstage'); });
   pushButton.addEventListener('click', function () { submit('push'); });
 
   window.addEventListener('message', function (event) {
@@ -297,7 +301,7 @@ function parseRequest(value: unknown): PanelRequest | undefined {
     return undefined;
   }
   const action = candidate.action;
-  if (action !== 'stage' && action !== 'commit' && action !== 'push') {
+  if (action !== 'stage' && action !== 'unstage' && action !== 'commit' && action !== 'push') {
     return undefined;
   }
   if (typeof candidate.groupId !== 'string' || !candidate.groupId.trim()) {

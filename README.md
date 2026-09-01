@@ -15,6 +15,7 @@ Prefer it beside the built-in **Changes** list? Drag the view's title onto the S
 - Commit from a Source Control style box at the top of the view: pick a group, type a message, press `Ctrl+Enter`. Drafts are kept per group.
 - See a count of changed files on the Activity Bar icon.
 - Split into **Staged Changes** and **Changes** the moment anything is staged, with your groups nested under each; the split disappears again when the index is clean.
+- Unstage a whole group or any staged file, without touching the working tree.
 - Discard a whole group or any selection of files, behind a modal that states reverts and permanent deletions separately.
 - Stage one group, commit one group, or commit and push one group with safety checks.
 - Open tracked changes in VS Code's Git diff and untracked files in the editor.

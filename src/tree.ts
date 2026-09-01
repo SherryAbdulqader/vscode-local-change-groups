@@ -266,7 +266,8 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     item.description = directoryLabel(displayChange.relativePath);
     item.tooltip = `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
     item.resourceUri = changeDecorationUri(displayChange.change.uri, displayChange.change.status, element.groupColor);
-    item.contextValue = element.groupId ? 'localChangeGroups.file.grouped' : 'localChangeGroups.file.ungrouped';
+    const membership = element.groupId ? 'grouped' : 'ungrouped';
+    item.contextValue = `localChangeGroups.file.${membership}${element.section ? `.${element.section}` : ''}`;
     item.command = {
       command: 'localChangeGroups.openChange',
       title: 'Open Change',

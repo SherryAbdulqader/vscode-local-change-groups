@@ -30,6 +30,9 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Staged Changes** and **Changes** sections, appearing only once the index holds
   something, with groups nested under each. A partially staged file appears in
   both, matching the built-in Changes list.
+- **Unstage Changes** for staged files and **Unstage Group**, plus an Unstage button
+  in the commit panel. Unstaging leaves the working tree untouched, and the file
+  action appears only on rows in the Staged Changes section.
 - **Discard Changes** for a selection of files and **Discard All Changes in Group**.
   The modal counts reverts and permanent deletions separately, and staged-only
   entries are skipped rather than silently unstaged.

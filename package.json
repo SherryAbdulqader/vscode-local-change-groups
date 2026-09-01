@@ -88,6 +88,18 @@
         "category": "Local Change Groups"
       },
       {
+        "command": "localChangeGroups.unstageChanges",
+        "title": "Unstage Changes",
+        "icon": "$(remove)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.unstageGroup",
+        "title": "Unstage Group",
+        "icon": "$(remove)",
+        "category": "Local Change Groups"
+      },
+      {
         "command": "localChangeGroups.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -281,12 +293,12 @@
         {
           "command": "localChangeGroups.commitGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
-          "group": "git@2"
+          "group": "git@3"
         },
         {
           "command": "localChangeGroups.commitAndPushGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
-          "group": "git@3"
+          "group": "git@4"
         },
         {
           "command": "localChangeGroups.assignToGroup",
@@ -295,7 +307,7 @@
         },
         {
           "command": "localChangeGroups.removeFromGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.file.grouped",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\.grouped/",
           "group": "inline@2"
         },
         {
@@ -310,7 +322,7 @@
         },
         {
           "command": "localChangeGroups.removeFromGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.file.grouped",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\.grouped/",
           "group": "group@2"
         },
         {
@@ -347,6 +359,21 @@
           "command": "localChangeGroups.deleteGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
           "group": "1_modify@3"
+        },
+        {
+          "command": "localChangeGroups.unstageGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "git@2"
+        },
+        {
+          "command": "localChangeGroups.unstageChanges",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.staged$/",
+          "group": "group@3"
+        },
+        {
+          "command": "localChangeGroups.unstageChanges",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.staged$/",
+          "group": "inline@0"
         }
       ]
     }

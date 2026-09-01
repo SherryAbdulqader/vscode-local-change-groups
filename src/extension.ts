@@ -7,7 +7,7 @@ import { GroupStore } from './store';
 import { ChangeGroupsTreeProvider, DisplayChange, FileNode, GroupNode } from './tree';
 import { GROUP_COLORS, GroupColor, LocalGroup } from './model';
 import { acquireRepositoryLock, buildOperationPlan, executeGroupOperation } from './operations';
-import { partitionForDiscard } from './presentation';
+import { isInSection, partitionForDiscard } from './presentation';
 
 /** Activates the local grouping view and guarded Git actions. */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -37,7 +37,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }),
       (action, groupId, message) => runCommand(output, async () => {
         const selected = groupNodeById(groupId, store, gitApi);
-        await runPanelAction(action, selected, provider, gitApi!.git.path, message);
+        await runPanelAction(action, selected, provider, gitApi!.git.path, message, output);
       })
     );
 
@@ -129,6 +129,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         provider.refresh();
         output.appendLine(`Created ${group.name} holding ${describeCount(changes.length)}`);
       })),
+      vscode.commands.registerCommand('localChangeGroups.unstageChanges', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
+        const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select files to unstage');
+        if (changes.length === 0) return;
+        await unstageChanges(changes, provider, output);
+      })),
+      vscode.commands.registerCommand('localChangeGroups.unstageGroup', (node?: GroupNode) => runCommand(output, async () => {
+        const selected = await requireGroupNode(node, store, gitApi, 'Select a group to unstage');
+        if (!selected) return;
+        await unstageChanges(provider.getGroupChanges(selected), provider, output, selected.group!.name);
+      })),
       vscode.commands.registerCommand('localChangeGroups.discardChanges', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
         const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select changed files to discard');
         if (changes.length === 0) return;
@@ -187,10 +197,15 @@ async function runPanelAction(
   selected: GroupNode,
   provider: ChangeGroupsTreeProvider,
   gitPath: string,
-  message: string
+  message: string,
+  output: vscode.OutputChannel
 ): Promise<void> {
   if (action === 'stage') {
     await stageGroupNode(selected, provider, gitPath);
+    return;
+  }
+  if (action === 'unstage') {
+    await unstageChanges(provider.getGroupChanges(selected), provider, output, selected.group!.name);
     return;
   }
   const trimmed = message.trim();
@@ -243,6 +258,35 @@ function selectedGroupId(selection: readonly unknown[]): string | undefined {
     if (node instanceof FileNode && node.groupId) return node.groupId;
   }
   return undefined;
+}
+
+/**
+ * Removes files from the index without touching the working tree. Entries that
+ * are not staged are ignored rather than treated as an error for the whole batch.
+ */
+async function unstageChanges(
+  changes: readonly DisplayChange[],
+  provider: ChangeGroupsTreeProvider,
+  output: vscode.OutputChannel,
+  groupName?: string
+): Promise<void> {
+  const staged = changes.filter(item => isInSection(item.area, 'staged'));
+  if (staged.length === 0) {
+    throw new Error('Nothing to unstage: none of those files are staged.');
+  }
+  for (const repository of new Set(staged.map(item => item.repository))) {
+    const release = acquireRepositoryLock(repository.rootUri.fsPath);
+    try {
+      const paths = staged.filter(item => item.repository === repository).map(item => item.change.uri.fsPath);
+      await repository.revert(paths);
+    } finally {
+      release();
+    }
+  }
+  provider.refresh();
+  const scope = groupName ? ` in group "${groupName}"` : '';
+  output.appendLine(`Unstaged ${describeCount(staged.length)}${scope}`);
+  void vscode.window.showInformationMessage(`Unstaged ${describeCount(staged.length)}${scope}.`);
 }
 
 /**
