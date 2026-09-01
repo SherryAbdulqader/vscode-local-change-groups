@@ -197,14 +197,14 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "localChangeGroups.container",
+          "id": "localChangeGroups",
           "title": "Local Change Groups",
           "icon": "resources/change-groups.svg"
         }
       ]
     },
     "views": {
-      "localChangeGroups.container": [
+      "localChangeGroups": [
         {
           "id": "localChangeGroups.view",
           "name": "Changes by Group",
