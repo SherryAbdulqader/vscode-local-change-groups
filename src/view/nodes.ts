@@ -1,4 +1,5 @@
 import type { CollectedChange } from '../core/changes';
+import type { FrozenFile } from '../core/frozen';
 import type { LocalGroup } from '../core/groups';
 import type { ChangeSection } from '../core/sections';
 import type { GitRepository } from '../git/api';
@@ -41,7 +42,9 @@ export class GroupNode {
     public readonly repository: GitRepository,
     public readonly group: LocalGroup | undefined,
     /** Set when this row lives under a section, which narrows what it lists. */
-    public readonly section?: ChangeSection
+    public readonly section?: ChangeSection,
+    /** When the freeze time is set, this row is showing a snapshot. */
+    public readonly frozenAt?: number
   ) {}
 }
 
@@ -52,6 +55,11 @@ export class FileNode {
     public readonly displayChange: DisplayChange,
     public readonly groupId: string | undefined,
     public readonly groupColor: LocalGroup['color'] | undefined,
-    public readonly section?: ChangeSection
+    public readonly section?: ChangeSection,
+    /**
+     * Present when the row belongs to a frozen group. Carries the two blob
+     * hashes its diff is built from, so opening it never has to ask Git.
+     */
+    public readonly frozen?: FrozenFile
   ) {}
 }

@@ -1,3 +1,4 @@
+import { FrozenSnapshot, normalizeFrozenSnapshots } from './frozen';
 import { DEFAULT_GROUP_COLOR, isGroupColor, isGroupIcon, LocalGroup } from './groups';
 
 /**
@@ -13,12 +14,14 @@ import { DEFAULT_GROUP_COLOR, isGroupColor, isGroupIcon, LocalGroup } from './gr
 export interface PersistedState {
   groups: LocalGroup[];
   assignments: Record<string, string>;
+  /** Snapshots, keyed by group id. A group with no entry here is live. */
+  frozen: Record<string, FrozenSnapshot>;
 }
 
 /** Reads stored state, or hands back an empty slate if it is unusable. */
 export function normalizePersistedState(value: unknown): PersistedState {
   if (!value || typeof value !== 'object') {
-    return { groups: [], assignments: {} };
+    return { groups: [], assignments: {}, frozen: {} };
   }
 
   const candidate = value as Partial<PersistedState>;
@@ -43,7 +46,7 @@ export function normalizePersistedState(value: unknown): PersistedState {
       }
     }
   }
-  return { groups, assignments };
+  return { groups, assignments, frozen: normalizeFrozenSnapshots(candidate.frozen, validIds) };
 }
 
 /** The bare minimum for something to pass as a group. */

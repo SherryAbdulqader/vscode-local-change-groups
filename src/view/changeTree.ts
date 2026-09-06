@@ -1,6 +1,8 @@
+import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
 import { assignedGroupId, collectChanges } from '../core/changes';
-import { ChangeSection, isInSection } from '../core/sections';
+import { FrozenFile, FrozenSnapshot } from '../core/frozen';
+import { ChangeSection, isInSection, isLiveSection } from '../core/sections';
 import { GroupStore } from '../data/groupStore';
 import { GitApi, GitRepository } from '../git/api';
 import { DisplayChange, FileNode, GroupNode, RepositoryNode, SectionNode, TreeNode } from './nodes';
@@ -112,8 +114,13 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
         .filter(node => this.visibleChanges(node).length > 0);
     }
     if (element instanceof GroupNode) {
-      return this.visibleChanges(element)
-        .map(change => new FileNode(change, element.group?.id, element.group?.color, element.section));
+      return this.visibleChanges(element).map(change => new FileNode(
+        change,
+        element.group?.id,
+        element.group?.color,
+        element.section,
+        this.frozenFile(element.group?.id, change.fileKey)
+      ));
     }
     return [];
   }
@@ -148,36 +155,131 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
    * Deliberate: a Git action on a group should always mean the whole group, even
    * when you started it from a row sitting under Staged Changes. Staging half a
    * group because of where you right-clicked would be a nasty surprise.
+   *
+   * Note this returns *live* changes even for a frozen group. Freezing pins what
+   * the tree shows; it does not pin what Git would do, and staging a synthesised
+   * row for a file Git no longer considers changed would simply fail.
    */
   public getGroupChanges(node: GroupNode): DisplayChange[] {
     if (!node.group) throw new Error('Select a named group.');
     return this.changesForGroup(node.repository, node.group.id);
   }
 
-  /**
-   * Shows the Staged / Changes split only once something is actually staged.
+/**
+   * Decides which sections exist right now.
    *
-   * With a clean index those two headers are pure noise, so the groups just sit
-   * at the top level until they earn their place.
+   * With nothing staged and nothing frozen there is nothing to split, so groups
+   * sit at the top level and the headers stay out of the way. Freezing a group,
+   * or staging anything, brings the relevant headers in.
+   *
+   * Frozen comes first deliberately: it is the layer furthest from Git, and
+   * reading top to bottom then goes frozen -> staged -> working tree.
    */
   private topLevelNodes(repository: GitRepository): TreeNode[] {
-    return this.hasStagedChanges(repository)
-      ? [new SectionNode(repository, 'staged'), new SectionNode(repository, 'unstaged')]
-      : this.groupNodes(repository, undefined);
+    const sections: ChangeSection[] = [];
+    if (this.frozenGroupCount() > 0) sections.push('frozen');
+    if (this.hasStagedChanges(repository)) sections.push('staged');
+    if (sections.length === 0) {
+      return this.groupNodes(repository, undefined);
+    }
+    sections.push('unstaged');
+    return sections.map(section => new SectionNode(repository, section));
   }
 
-  /** The group rows under a repository, or under one section of it. */
+  /**
+   * The group rows under a repository, or under one section of it.
+   *
+   * The Frozen section holds only frozen groups; the live sections hold only
+   * unfrozen ones plus Ungrouped. A group therefore appears in exactly one
+   * place, which is what keeps the two layers from arguing about who owns a file.
+   */
   private groupNodes(repository: GitRepository, section: ChangeSection | undefined): GroupNode[] {
+    const groups = this.store.getGroups();
+    if (section === 'frozen') {
+      return groups
+        .filter(group => this.store.getFrozen(group.id))
+        .map(group => new GroupNode(repository, group, section, this.store.getFrozen(group.id)!.frozenAt));
+    }
     return [
-      ...this.store.getGroups().map(group => new GroupNode(repository, group, section)),
+      ...groups.filter(group => !this.store.getFrozen(group.id)).map(group => new GroupNode(repository, group, section)),
       new GroupNode(repository, undefined, section)
     ];
   }
 
-  /** A group's files, narrowed to its section if it is in one. */
+  /** How many groups are currently frozen, deciding whether the section exists. */
+  private frozenGroupCount(): number {
+    return Object.keys(this.store.getAllFrozen()).length;
+  }
+
+  /**
+   * What one group row lists.
+   *
+   * A row in the Frozen section answers from its snapshot and never consults
+   * Git. Everywhere else answers from live state.
+   */
   private visibleChanges(node: GroupNode): DisplayChange[] {
-    const changes = this.changesForGroup(node.repository, node.group?.id);
-    return node.section ? changes.filter(change => isInSection(change.area, node.section!)) : changes;
+    if (node.section === 'frozen') {
+      const snapshot = node.group ? this.store.getFrozen(node.group.id) : undefined;
+      return snapshot ? this.frozenChanges(node.repository, snapshot) : [];
+    }
+    const changes = this.liveChanges(node);
+    // Hoisted so the narrowing survives into the closure below.
+    const section = node.section;
+    return section && isLiveSection(section)
+      ? changes.filter(change => isInSection(change.area, section))
+      : changes;
+  }
+
+  /**
+   * Live changes for a row outside the Frozen section.
+   *
+   * Ungrouped absorbs anything whose group is frozen. Without this, editing a
+   * file *after* freezing its group would make that edit vanish: the frozen
+   * group renders from its snapshot, so the live change would sit in a bucket
+   * nothing draws. Now the snapshot stays pinned under Frozen and the new work
+   * shows up in Changes, ready to be grouped again.
+   */
+  private liveChanges(node: GroupNode): DisplayChange[] {
+    const grouped = this.grouping(node.repository);
+    if (node.group) {
+      return grouped.get(node.group.id) ?? [];
+    }
+    const frozenIds = new Set(Object.keys(this.store.getAllFrozen()));
+    const orphaned = [...grouped.entries()]
+      .filter(([groupId]) => frozenIds.has(groupId))
+      .flatMap(([, bucket]) => bucket);
+    if (orphaned.length === 0) {
+      return grouped.get(UNGROUPED_KEY) ?? [];
+    }
+    return [...(grouped.get(UNGROUPED_KEY) ?? []), ...orphaned]
+      .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+  }
+
+  /**
+   * Turns snapshot entries into rows.
+   *
+   * Frozen files are shown whether or not Git still reports them as changed, so
+   * these are synthesised rather than looked up. That is the point of a freeze:
+   * revert the file afterwards and the group still shows what you captured.
+   */
+  private frozenChanges(repository: GitRepository, snapshot: FrozenSnapshot): DisplayChange[] {
+    return snapshot.files.map(file => ({
+      repository,
+      change: {
+        uri: vscode.Uri.file(nodePath.join(repository.rootUri.fsPath, file.relativePath)),
+        status: file.status
+      },
+      relativePath: file.relativePath,
+      fileKey: file.fileKey,
+      assignmentKeys: [file.fileKey],
+      area: file.area
+    }));
+  }
+
+  /** The snapshot entry behind a row, so the file node can carry its blobs. */
+  private frozenFile(groupId: string | undefined, fileKey: string): FrozenFile | undefined {
+    if (!groupId) return undefined;
+    return this.store.getFrozen(groupId)?.files.find(file => file.fileKey === fileKey);
   }
 
   /** Adds up a section across all its groups, for the number in the header. */

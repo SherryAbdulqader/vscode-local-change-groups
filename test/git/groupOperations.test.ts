@@ -106,6 +106,44 @@ test('push uses explicit remote and local-to-upstream ref with no set-upstream',
   assert.ok(calls.includes('push:origin:main:main:false'));
 });
 
+
+/**
+ * A rename that is already staged has no old path left anywhere: git mv removed
+ * it from both the index and the working tree. Git still reports the change with
+ * both sides, and passing the vanished one as a pathspec used to abort the whole
+ * action with a fatal error.
+ */
+test('a staged rename does not abort on its vanished old path', async t => {
+  const root = await repo(t, { 'old.txt': 'one\n', 'other.txt': 'base\n' });
+  await run(root, ['mv', 'old.txt', 'new.txt']);
+
+  // Exactly what the Git extension reports for a staged rename: status 3, with
+  // originalUri pointing at a path that no longer exists on disk or in the index.
+  const renamed: GitChange = {
+    uri: uri(path.join(root, 'new.txt')),
+    originalUri: uri(path.join(root, 'old.txt')),
+    status: 3
+  };
+  const repository = mockRepository(root, [], [renamed]);
+  await repository.status();
+
+  const plan = buildOperationPlan(repository, repository.state.indexChanges, 'commit');
+  assert.ok(plan.paths.includes('old.txt'), 'both sides of the rename are planned');
+
+  await executeGroupOperation(repository, plan, git, 'rename only');
+  assert.deepEqual(await commitPaths(root), ['new.txt', 'old.txt']);
+});
+
+test('a group whose paths have all vanished fails with a clear message', async t => {
+  const root = await repo(t, { 'gone.txt': 'one\n' });
+  const repository = mockRepository(root, [change(root, 'gone.txt', 0)]);
+  await repository.status();
+  const plan = buildOperationPlan(repository, repository.state.workingTreeChanges, 'stage');
+  await fs.rm(path.join(root, 'gone.txt'));
+  await run(root, ['rm', '--cached', '--', 'gone.txt']);
+  await assert.rejects(executeGroupOperation(repository, plan, git), /no longer exist|still exist/i);
+});
+
 function mockRepository(root: string, working: GitChange[], index: GitChange[] = [], calls: string[] = []): GitRepository {
   const repository: GitRepository = {
     rootUri: uri(root),

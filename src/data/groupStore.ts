@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { FrozenSnapshot } from '../core/frozen';
 import { DEFAULT_GROUP_COLOR, GroupColor, isGroupColor, LocalGroup, normalizeGroupIcon, normalizeGroupName } from '../core/groups';
 import { normalizePersistedState, PersistedState } from '../core/persistence';
 
@@ -43,6 +44,34 @@ export class GroupStore {
   public getAssignment(fileKey: string): string | undefined {
     if (!fileKey.trim()) throw new Error('A file key is required.');
     return this.state.assignments[fileKey];
+  }
+
+  /** The snapshot pinning a group, or undefined when it is live. */
+  public getFrozen(groupId: string): FrozenSnapshot | undefined {
+    if (!groupId.trim()) throw new Error('A group ID is required.');
+    return this.state.frozen[groupId];
+  }
+
+  /** Every snapshot currently held, for pruning stored blobs. */
+  public getAllFrozen(): Record<string, FrozenSnapshot> {
+    return { ...this.state.frozen };
+  }
+
+  /** Pins a group to a snapshot. */
+  public async freezeGroup(groupId: string, snapshot: FrozenSnapshot): Promise<void> {
+    if (!snapshot?.files?.length) throw new Error('A freeze needs at least one file.');
+    await this.mutate(next => {
+      this.requireGroup(next, groupId);
+      next.frozen[groupId] = snapshot;
+    });
+  }
+
+  /** Releases a group back to live Git state. */
+  public async unfreezeGroup(groupId: string): Promise<void> {
+    await this.mutate(next => {
+      this.requireGroup(next, groupId);
+      delete next.frozen[groupId];
+    });
   }
 
   /**
@@ -95,6 +124,7 @@ export class GroupStore {
       this.requireGroup(next, groupId);
       next.groups = next.groups.filter(group => group.id !== groupId);
       for (const [key, assigned] of Object.entries(next.assignments)) if (assigned === groupId) delete next.assignments[key];
+      delete next.frozen[groupId];
     });
   }
 
@@ -112,12 +142,21 @@ export class GroupStore {
     await this.moveAssignments([{ fileKey: currentKey, assignmentKeys: fileKeys }], groupId);
   }
 
-  /** Moves a whole batch of files in a single persisted write. */
+  /**
+   * Moves a whole batch of files in a single persisted write.
+   *
+   * Refuses if the destination is frozen. A frozen group is showing a snapshot,
+   * so a file dropped into it would sit there with nothing to display — the
+   * guard lives here rather than in the commands so drag-and-drop gets it too.
+   */
   public async moveAssignments(targets: readonly AssignmentTarget[], groupId: string): Promise<void> {
     if (!targets.length) throw new Error('At least one file is required.');
     validateTargets(targets);
     await this.mutate(next => {
-      this.requireGroup(next, groupId);
+      const group = this.requireGroup(next, groupId);
+      if (next.frozen[groupId]) {
+        throw new Error(`"${group.name}" is frozen. Unfreeze it before adding files.`);
+      }
       applyAssignments(next, targets, groupId);
     });
   }
@@ -147,10 +186,10 @@ export class GroupStore {
     let rejectResult!: (reason?: unknown) => void;
     const result = new Promise<T>((resolve, reject) => { resolveResult = resolve; rejectResult = reject; });
     this.writeQueue = this.writeQueue.catch(() => undefined).then(async () => {
-      const next: PersistedState = { groups: this.state.groups.map(group => ({ ...group })), assignments: { ...this.state.assignments } };
+      const next: PersistedState = { groups: this.state.groups.map(group => ({ ...group })), assignments: { ...this.state.assignments }, frozen: { ...this.state.frozen } };
       try {
         const value = change(next);
-        const snapshot: PersistedState = { groups: next.groups.map(group => ({ ...group })), assignments: { ...next.assignments } };
+        const snapshot: PersistedState = { groups: next.groups.map(group => ({ ...group })), assignments: { ...next.assignments }, frozen: { ...next.frozen } };
         await this.memento.update(STORAGE_KEY, snapshot);
         this.state = snapshot;
         resolveResult(value);

@@ -118,6 +118,42 @@
         "icon": "$(go-to-file)"
       },
       {
+        "command": "localChangeGroups.freezeGroup",
+        "title": "Freeze Group",
+        "icon": "$(lock)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.unfreezeGroup",
+        "title": "Unfreeze Group",
+        "icon": "$(unlock)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.refreezeGroup",
+        "title": "Update Freeze to Current",
+        "icon": "$(sync)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.unfreezeAllGroups",
+        "title": "Unfreeze All Groups",
+        "icon": "$(unlock)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.openFrozenChange",
+        "title": "Open Frozen Change",
+        "icon": "$(go-to-file)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.compareFrozenWithCurrent",
+        "title": "Compare Frozen with Current",
+        "icon": "$(git-compare)",
+        "category": "Local Change Groups"
+      },
+      {
         "command": "localChangeGroups.stageGroup",
         "title": "Stage Group",
         "icon": "$(add)",
@@ -273,6 +309,11 @@
           "command": "localChangeGroups.refresh",
           "when": "view == localChangeGroups.view",
           "group": "navigation@2"
+        },
+        {
+          "command": "localChangeGroups.unfreezeAllGroups",
+          "when": "view == localChangeGroups.view && localChangeGroups.hasFrozen",
+          "group": "freeze@1"
         }
       ],
       "view/item/context": [
@@ -293,42 +334,42 @@
         },
         {
           "command": "localChangeGroups.stageGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "git@1"
         },
         {
           "command": "localChangeGroups.commitGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "git@3"
         },
         {
           "command": "localChangeGroups.commitAndPushGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "git@4"
         },
         {
           "command": "localChangeGroups.assignToGroup",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/ && !(viewItem =~ /\\.frozen$/)",
           "group": "inline@1"
         },
         {
           "command": "localChangeGroups.removeFromGroup",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\.grouped/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\.grouped/ && !(viewItem =~ /.frozen$/)",
           "group": "inline@2"
         },
         {
           "command": "localChangeGroups.createGroupFromSelection",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/ && !(viewItem =~ /\\.frozen$/)",
           "group": "group@0"
         },
         {
           "command": "localChangeGroups.assignToGroup",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/ && !(viewItem =~ /\\.frozen$/)",
           "group": "group@1"
         },
         {
           "command": "localChangeGroups.removeFromGroup",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\.grouped/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\.grouped/ && !(viewItem =~ /.frozen$/)",
           "group": "group@2"
         },
         {
@@ -338,53 +379,98 @@
         },
         {
           "command": "localChangeGroups.discardChanges",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/ && !(viewItem =~ /.frozen$/)",
           "group": "inline@3"
         },
         {
           "command": "localChangeGroups.discardChanges",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/ && !(viewItem =~ /.frozen$/)",
           "group": "zdiscard@1"
         },
         {
           "command": "localChangeGroups.discardGroupChanges",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "zdiscard@1"
         },
         {
           "command": "localChangeGroups.changeColor",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "1_modify@1"
         },
         {
           "command": "localChangeGroups.renameGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "1_modify@3"
         },
         {
           "command": "localChangeGroups.deleteGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "1_modify@4"
         },
         {
           "command": "localChangeGroups.unstageGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "git@2"
         },
         {
           "command": "localChangeGroups.unstageChanges",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.staged$/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.staged$/ && !(viewItem =~ /.frozen$/)",
           "group": "group@3"
         },
         {
           "command": "localChangeGroups.unstageChanges",
-          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.staged$/",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.staged$/ && !(viewItem =~ /.frozen$/)",
           "group": "inline@0"
         },
         {
           "command": "localChangeGroups.changeIcon",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "1_modify@2"
+        },
+        {
+          "command": "localChangeGroups.freezeGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "inline@0"
+        },
+        {
+          "command": "localChangeGroups.freezeGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "0_freeze@1"
+        },
+        {
+          "command": "localChangeGroups.unfreezeGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "group": "inline@0"
+        },
+        {
+          "command": "localChangeGroups.unfreezeGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "group": "0_freeze@1"
+        },
+        {
+          "command": "localChangeGroups.compareFrozenWithCurrent",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.frozen$/",
+          "group": "inline@0"
+        },
+        {
+          "command": "localChangeGroups.compareFrozenWithCurrent",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.frozen$/",
+          "group": "navigation@2"
+        },
+        {
+          "command": "localChangeGroups.openFrozenChange",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file\\..*\\.frozen$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "localChangeGroups.refreezeGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "group": "0_freeze@2"
+        },
+        {
+          "command": "localChangeGroups.refreezeGroup",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "group": "inline@1"
         }
       ]
     }

@@ -1,6 +1,7 @@
 import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
 import { directoryLabel, groupColorId, statusLabel } from '../core/changeLabels';
+import { frozenLabel } from '../core/frozen';
 import { DEFAULT_GROUP_ICON, GroupColor } from '../core/groups';
 import { sectionLabel } from '../core/sections';
 import { changeDecorationUri } from './decorations';
@@ -35,27 +36,48 @@ export function sectionItem(node: SectionNode, count: number): vscode.TreeItem {
   item.id = `section:${node.repository.rootUri.toString()}:${node.section}`;
   item.description = String(count);
   item.contextValue = `localChangeGroups.section.${node.section}`;
-  item.iconPath = new vscode.ThemeIcon(node.section === 'staged' ? 'check' : 'edit');
-  item.tooltip = node.section === 'staged'
-    ? 'Files staged in the Git index, grouped the same way'
-    : 'Files changed in the working tree, grouped the same way';
+  item.iconPath = new vscode.ThemeIcon(SECTION_ICONS[node.section]);
+  item.tooltip = SECTION_TOOLTIPS[node.section];
   return item;
 }
 
-/** A group header, dressed to look like the built-in section headers. */
+const SECTION_ICONS: Record<SectionNode['section'], string> = {
+  frozen: 'lock',
+  staged: 'check',
+  unstaged: 'edit'
+};
+
+const SECTION_TOOLTIPS: Record<SectionNode['section'], string> = {
+  frozen: 'Snapshots pinned by a freeze.\nThese show the files as they were, so later edits appear in Changes instead.',
+  staged: 'Files staged in the Git index, grouped the same way',
+  unstaged: 'Files changed in the working tree, grouped the same way'
+};
+
+/**
+ * A group header, dressed to look like the built-in section headers.
+ *
+ * A frozen group says so in its description and swaps its icon for a lock. The
+ * lock wins over the group's chosen icon on purpose — frozen is a state you want
+ * to notice at a glance, and it is temporary, so the icon comes back on unfreeze.
+ */
 export function groupItem(node: GroupNode, count: number): vscode.TreeItem {
   const name = node.group?.name ?? 'Ungrouped';
+  const frozen = node.frozenAt !== undefined;
   const item = new vscode.TreeItem(name, count
     ? vscode.TreeItemCollapsibleState.Expanded
     : vscode.TreeItemCollapsibleState.Collapsed);
   item.id = `group:${node.repository.rootUri.toString()}:${node.section ?? 'all'}:${node.group?.id ?? 'ungrouped'}`;
-  item.description = String(count);
+  item.description = frozen ? `${count} · frozen` : String(count);
   item.tooltip = node.group
-    ? `${name} — ${count} change${count === 1 ? '' : 's'}\nDrop files here to assign them.`
+    ? frozen
+      ? `${name} — ${count} file${count === 1 ? '' : 's'} frozen ${frozenLabel(node.frozenAt!)}\nShowing the snapshot. Later edits to these files will not appear here.`
+      : `${name} — ${count} change${count === 1 ? '' : 's'}\nDrop files here to assign them.`
     : 'Changes that belong to no group\nDrop files here to remove them from their group.';
-  item.contextValue = node.group ? 'localChangeGroups.group' : 'localChangeGroups.ungrouped';
+  item.contextValue = node.group
+    ? frozen ? 'localChangeGroups.group.frozen' : 'localChangeGroups.group'
+    : 'localChangeGroups.ungrouped';
   item.iconPath = new vscode.ThemeIcon(
-    node.group ? node.group.icon ?? DEFAULT_GROUP_ICON : 'circle-outline',
+    node.group ? frozen ? 'lock' : node.group.icon ?? DEFAULT_GROUP_ICON : 'circle-outline',
     node.group ? groupThemeColor(node.group.color) : undefined
   );
   return item;
@@ -74,10 +96,13 @@ export function fileItem(node: FileNode): vscode.TreeItem {
   const item = new vscode.TreeItem(nodePath.basename(displayChange.relativePath), vscode.TreeItemCollapsibleState.None);
   item.id = `file:${node.section ?? 'all'}:${node.groupId ?? 'ungrouped'}:${displayChange.fileKey}`;
   item.description = directoryLabel(displayChange.relativePath);
-  item.tooltip = `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
+  item.tooltip = node.frozen
+    ? `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · frozen\nOpens the snapshot, not the current file.`
+    : `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
   item.resourceUri = changeDecorationUri(displayChange.change.uri, displayChange.change.status, node.groupColor);
   const membership = node.groupId ? 'grouped' : 'ungrouped';
-  item.contextValue = `localChangeGroups.file.${membership}${node.section ? `.${node.section}` : ''}`;
+  const state = node.frozen ? '.frozen' : node.section ? `.${node.section}` : '';
+  item.contextValue = `localChangeGroups.file.${membership}${state}`;
   item.command = {
     command: 'localChangeGroups.openChange',
     title: 'Open Change',

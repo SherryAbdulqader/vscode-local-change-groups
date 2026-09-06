@@ -22,7 +22,12 @@ export interface GitResult {
  * legible than the message below.
  */
 export class GitRunner {
-  public constructor(private readonly executable: string, public readonly root: string) {
+  /** The optional logger records every failing command, argv and all. */
+  public constructor(
+    private readonly executable: string,
+    public readonly root: string,
+    private readonly log?: (message: string) => void
+  ) {
     if (!executable?.trim() || executable.includes('\0')) throw new Error('VS Code did not provide a safe Git executable path.');
     if (!root?.trim() || root.includes('\0') || !nodePath.isAbsolute(root)) throw new Error('A safe absolute repository root is required.');
   }
@@ -39,7 +44,15 @@ export class GitRunner {
       execFile(this.executable, args, { cwd: this.root, env, encoding: 'buffer', windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
         const result = { stdout: Buffer.from(stdout ?? ''), stderr: Buffer.from(stderr ?? '') };
         if (error && !allowFailure) {
-          reject(new Error(result.stderr.toString('utf8').trim() || error.message));
+          // Git's own message alone ("fatal: ...") does not say which of the
+          // dozen commands behind one group action produced it, which makes a
+          // bug report almost impossible to act on. Name the subcommand in the
+          // error, and put the full argv in the log.
+          const detail = result.stderr.toString('utf8').trim() || error.message;
+          const subcommand = args.find(arg => !arg.startsWith('-')) ?? 'git';
+          this.log?.(`  git ${args.join(' ')}`);
+          this.log?.(`  -> ${detail}`);
+          reject(new Error(`git ${subcommand} failed: ${detail}`));
         } else {
           resolve(result);
         }

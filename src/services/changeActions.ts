@@ -32,7 +32,7 @@ export interface ActionContext {
 export async function stageGroup(context: ActionContext, selected: GroupNode): Promise<void> {
   const changes = context.provider.getGroupChanges(selected);
   const plan = buildOperationPlan(selected.repository, changes.map(item => item.change), 'stage');
-  await executeGroupOperation(selected.repository, plan, context.gitPath);
+  await executeGroupOperation(selected.repository, plan, context.gitPath, undefined, false, line => context.output.appendLine(line));
   context.provider.refresh();
   void vscode.window.showInformationMessage(`Staged only group "${selected.group!.name}".`);
 }
@@ -40,7 +40,7 @@ export async function stageGroup(context: ActionContext, selected: GroupNode): P
 /** Commits one group. The message has already been collected by this point. */
 export async function commitGroup(context: ActionContext, selected: GroupNode, message: string): Promise<void> {
   const plan = buildOperationPlan(selected.repository, context.provider.getGroupChanges(selected).map(item => item.change), 'commit');
-  await executeGroupOperation(selected.repository, plan, context.gitPath, message);
+  await executeGroupOperation(selected.repository, plan, context.gitPath, message, false, line => context.output.appendLine(line));
   context.provider.refresh();
   void vscode.window.showInformationMessage(`Committed only group "${selected.group!.name}".`);
 }
@@ -55,7 +55,7 @@ export async function commitAndPushGroup(context: ActionContext, selected: Group
   );
   if (confirmation !== 'Commit & Push') return;
   try {
-    await executeGroupOperation(selected.repository, plan, context.gitPath, message, true);
+    await executeGroupOperation(selected.repository, plan, context.gitPath, message, true, line => context.output.appendLine(line));
   } catch (error) {
     // This might have been the push failing rather than the commit, and that
     // distinction matters a lot to whoever is reading the error: the work is not

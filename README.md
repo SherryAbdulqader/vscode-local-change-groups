@@ -17,11 +17,36 @@ Prefer it beside the built-in **Changes** list? Drag the view's title onto the S
 - See a count of changed files on the Activity Bar icon.
 - Split into **Staged Changes** and **Changes** the moment anything is staged, with your groups nested under each; the split disappears again when the index is clean.
 - Unstage a whole group or any staged file, without touching the working tree.
+- Freeze a group to pin what it shows, so later edits to the same files stay out of a change you have already reviewed.
 - Discard a whole group or any selection of files, behind a modal that states reverts and permanent deletions separately.
 - Stage one group, commit one group, or commit and push one group with safety checks.
 - Open tracked changes in VS Code's Git diff and untracked files in the editor.
 - Refresh automatically from VS Code's built-in Git extension.
 - Keep independent assignments for files in multiple open repositories.
+
+## Freeze a group
+
+Freezing is a snapshot layer between your working tree and the index.
+
+Finish a piece of work, drop those files into a group, name it **Problem 1**, and freeze it. From then on the group shows you *that* change and nothing else. Keep editing the same files for the next problem — click a frozen row and you still see exactly the diff you reviewed, because it is served from the snapshot rather than from Git.
+
+Frozen groups live in their own **Frozen** section, separate from Staged Changes and Changes. That separation is the point: keep editing a frozen file and the new work shows up in **Changes** as an ordinary ungrouped change, ready to be grouped again, while the snapshot stays pinned above it. One file, two rows, two different questions answered.
+
+A freeze pins two things:
+
+- **What the group displays.** Later edits never leak into a diff you already looked at.
+- **What can join it.** A frozen group stops accepting new files, which is the point of parking it.
+
+It does **not** stop you working. You can still edit those files, and you can still stage, commit, or push the group — Git acts on the current content, as always.
+
+Coming back to a frozen group later:
+
+- **Unfreeze Group** releases it, and names every file that changed while it was parked. Nothing drifted? It says so.
+- **Update Freeze to Current** re-captures the snapshot in place, for when one more fix belongs with the change you already froze.
+- **Compare Frozen with Current** on any frozen row diffs the snapshot against the live file.
+- **Unfreeze All Groups** appears in the view title menu only while something is frozen.
+
+Snapshot contents are stored as content-addressed blobs in the extension's own storage folder, never inside `.git`. Binary files are skipped, since there is nothing to show in a diff.
 
 ## Safe group Git actions
 
@@ -80,7 +105,7 @@ which is pinned as a dev dependency:
 
 ```text
 npm install
-npm test                     # 52 tests
+npm test                     # 63 tests
 npm run package              # -> dist/local-change-groups-<version>.vsix
 npm run install-extension    # package, then install into VS Code
 ```

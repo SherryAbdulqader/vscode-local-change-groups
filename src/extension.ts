@@ -1,4 +1,6 @@
+import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
+import { registerFreezeCommands } from './commands/freezeCommands';
 import { registerGitCommands } from './commands/gitCommands';
 import { registerGroupCommands } from './commands/groupCommands';
 import { CommandContext, runCommand } from './commands/context';
@@ -6,8 +8,11 @@ import { runPanelAction } from './commands/panelActions';
 import { selectedGroupId } from './commands/selection';
 import { describeFileCount, errorMessage } from './core/text';
 import { GroupStore } from './data/groupStore';
+import { SnapshotFiles } from './data/snapshotFiles';
 import { getGitApi, GitApi } from './git/api';
+import { FreezeContext } from './services/freezeActions';
 import { ChangeGroupsTreeProvider } from './view/changeTree';
+import { FROZEN_SCHEME, FrozenContentProvider } from './view/frozenContent';
 import { CommitPanelProvider } from './view/commitPanel/provider';
 import { ChangeDecorationProvider } from './view/decorations';
 import { ChangeGroupsDragAndDropController } from './view/dragAndDrop';
@@ -37,6 +42,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const gitApi = await getGitApi();
     const provider = new ChangeGroupsTreeProvider(gitApi, store);
     const decorations = new ChangeDecorationProvider();
+    // Frozen contents live beside the extension's other workspace state, never
+    // inside .git. storageUri is only absent without a workspace, where there is
+    // no repository to freeze anyway.
+    const snapshots = new SnapshotFiles(nodePath.join(context.storageUri?.fsPath ?? context.globalStorageUri.fsPath, 'frozen'));
     const dragAndDrop = new ChangeGroupsDragAndDropController(provider, store, message => output.appendLine(message));
 
     const view = vscode.window.createTreeView<TreeNode>('localChangeGroups.view', {
@@ -48,6 +57,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const commands: CommandContext = { store, provider, view, gitApi, output };
     const commitPanel = buildCommitPanel(commands);
+    const freezeContext = (): FreezeContext => {
+      if (!gitApi) throw new Error('The built-in Git extension is unavailable.');
+      return { store, provider, snapshots, output, gitPath: gitApi.git.path };
+    };
 
     context.subscriptions.push(
       output,
@@ -62,13 +75,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       provider.onDidChangeTreeData(() => {
         commitPanel.refresh();
         view.badge = changeBadge(provider);
+        void vscode.commands.executeCommand(
+          'setContext',
+          'localChangeGroups.hasFrozen',
+          Object.keys(store.getAllFrozen()).length > 0
+        );
       }),
       view.onDidChangeSelection(event => commitPanel.setSelectedGroup(selectedGroupId(event.selection))),
+      vscode.workspace.registerTextDocumentContentProvider(FROZEN_SCHEME, new FrozenContentProvider(snapshots)),
       ...registerGroupCommands(commands),
-      ...registerGitCommands(commands)
+      ...registerGitCommands(commands),
+      ...registerFreezeCommands(commands, freezeContext)
     );
 
     view.badge = changeBadge(provider);
+    void vscode.commands.executeCommand(
+      'setContext',
+      'localChangeGroups.hasFrozen',
+      Object.keys(store.getAllFrozen()).length > 0
+    );
 
     if (!gitApi) {
       void vscode.window.showInformationMessage('Local Change Groups requires VS Code\'s built-in Git extension.');

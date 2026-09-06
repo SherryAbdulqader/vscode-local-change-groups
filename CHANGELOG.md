@@ -39,6 +39,26 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Discard Changes** for a selection of files and **Discard All Changes in Group**.
   The modal counts reverts and permanent deletions separately, and staged-only
   entries are skipped rather than silently unstaged.
+- **Freeze Group**: a snapshot layer between the working tree and the index.
+  A frozen group shows the files as they were at freeze time and stops accepting
+  new ones, so later edits to the same files never appear in a change you have
+  already reviewed. Staging and committing still work and still act on current
+  content. **Compare Frozen with Current** shows the drift,
+  **Update Freeze to Current** re-captures in place, and **Unfreeze All Groups**
+  clears the lot. Unfreezing names every file that drifted while parked. Contents are stored as content-addressed
+  blobs in extension storage, never inside `.git`.
+
+### Fixed
+- Editing a file after freezing its group made that edit disappear: the group
+  rendered from its snapshot, so the live change had nowhere to go. Frozen groups
+  now sit in their own **Frozen** section and their files fall back to Ungrouped
+  in the live sections, so the ongoing work stays visible.
+- A group action involving a staged rename could abort with a fatal pathspec
+  error, because the rename’s old path exists in neither the index nor the
+  working tree. Those paths are now dropped before `git add`, while
+  `git commit --only` still receives them so the delete side is recorded.
+- Git failures now name the subcommand that failed, and the full argv and stderr
+  are written to the Local Change Groups output channel.
 
 ### Changed
 - Restructured the source into layers — `core`, `data`, `git`, `view`, `services`,

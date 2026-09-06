@@ -180,3 +180,70 @@ test('store rejects a malformed icon and an unknown group', async () => {
   await assert.rejects(store.setGroupIcon('missing', 'beaker'), /Group not found/);
   assert.equal(store.getGroups()[0].icon, undefined);
 });
+
+/** A minimal snapshot; the store only cares that it has files. */
+function frozenSnapshot() {
+  return {
+    frozenAt: 1_700_000_000_000,
+    repositoryRoot: 'C:\repo',
+    files: [{
+      fileKey: 'c:/repo::src/a.ts',
+      relativePath: 'src/a.ts',
+      status: 5,
+      area: 'Working Tree' as const,
+      frozenHash: 'a'.repeat(64)
+    }]
+  };
+}
+
+test('freezing and unfreezing a group round trips through storage', async () => {
+  const memory = new MemoryMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Problem 1');
+  assert.equal(store.getFrozen(group.id), undefined);
+
+  await store.freezeGroup(group.id, frozenSnapshot());
+  assert.equal(store.getFrozen(group.id)?.files.length, 1);
+  assert.equal(new GroupStore(memory).getFrozen(group.id)?.files.length, 1);
+
+  await store.unfreezeGroup(group.id);
+  assert.equal(store.getFrozen(group.id), undefined);
+  assert.equal(new GroupStore(memory).getFrozen(group.id), undefined);
+});
+
+test('a frozen group refuses new files', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Problem 1');
+  await store.freezeGroup(group.id, frozenSnapshot());
+  await assert.rejects(
+    store.moveAssignments([{ fileKey: 'repo::b.ts', assignmentKeys: ['repo::b.ts'] }], group.id),
+    /is frozen/
+  );
+  assert.equal(store.getAssignment('repo::b.ts'), undefined);
+});
+
+test('an unfrozen group accepts files again', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Problem 1');
+  await store.freezeGroup(group.id, frozenSnapshot());
+  await store.unfreezeGroup(group.id);
+  await store.moveAssignments([{ fileKey: 'repo::b.ts', assignmentKeys: ['repo::b.ts'] }], group.id);
+  assert.equal(store.getAssignment('repo::b.ts'), group.id);
+});
+
+test('deleting a group takes its snapshot with it', async () => {
+  const memory = new MemoryMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Problem 1');
+  await store.freezeGroup(group.id, frozenSnapshot());
+  await store.deleteGroup(group.id);
+  assert.deepEqual(store.getAllFrozen(), {});
+  assert.deepEqual(new GroupStore(memory).getAllFrozen(), {});
+});
+
+test('freezing rejects an empty snapshot and an unknown group', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Problem 1');
+  await assert.rejects(store.freezeGroup(group.id, { ...frozenSnapshot(), files: [] }), /at least one file/i);
+  await assert.rejects(store.freezeGroup('missing', frozenSnapshot()), /Group not found/);
+});

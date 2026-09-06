@@ -30,6 +30,12 @@ export function registerGitCommands(context: CommandContext): vscode.Disposable[
       if (!node?.displayChange) {
         throw new Error('Select a changed file to open.');
       }
+      // A frozen row shows the snapshot. This is the whole feature: keep editing
+      // the file and the diff you already reviewed stays exactly as it was.
+      if (node.frozen) {
+        await vscode.commands.executeCommand('localChangeGroups.openFrozenChange', node);
+        return;
+      }
       const { change } = node.displayChange;
       // Nothing committed to compare against, so just open the file.
       if (change.status === UNTRACKED) {

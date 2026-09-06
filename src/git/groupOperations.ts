@@ -118,14 +118,15 @@ export async function executeGroupOperation(
   preview: GroupOperationPlan,
   gitExecutable: string,
   message?: string,
-  push = false
+  push = false,
+  log?: (message: string) => void
 ): Promise<void> {
   const requestedKind: OperationKind = message === undefined ? 'stage' : push ? 'push' : 'commit';
   if (preview.kind !== requestedKind) throw new Error('The confirmed group action does not match the requested operation.');
   if (message !== undefined && Buffer.byteLength(message, 'utf8') > 10_000) throw new Error('Commit messages cannot exceed 10,000 bytes.');
   const lockKey = normalizedRoot(repository.rootUri.fsPath);
   const release = acquireRepositoryLock(lockKey);
-  const runner = new GitRunner(gitExecutable, repository.rootUri.fsPath);
+  const runner = new GitRunner(gitExecutable, repository.rootUri.fsPath, log);
   try {
     await repository.status();
     const live = buildOperationPlan(repository, findPlanChanges(repository, preview.paths), preview.kind);
@@ -137,9 +138,27 @@ export async function executeGroupOperation(
     const unrelated = recordsOutside(before.index, group);
     const initiallyStaged = new Set(expandChangePaths(repository.rootUri.fsPath, repository.state.indexChanges));
     const owned = preview.paths.filter(path => !initiallyStaged.has(path));
+
+    // `git add` matches pathspecs against the index and the working tree only,
+    // and treats one that matches nothing as fatal. A rename whose old side is
+    // already staged away is exactly that: gone from both, yet still reported as
+    // one side of the change. Drop those before adding — there is nothing left
+    // to stage for them.
+    //
+    // `commit --only` is a different matter and keeps the full list: it matches
+    // against HEAD as well, so the vanished old path is what records the delete.
+    // Filtering there would commit the rename's new file and silently leave the
+    // old one behind.
+    const stageable = await matchablePaths(runner.root, before.index, preview.paths);
+
     let committed = false;
     try {
-      await runner.run(['--literal-pathspecs', 'add', '-A', '--', ...preview.paths]);
+      if (stageable.length > 0) {
+        await runner.run(['--literal-pathspecs', 'add', '-A', '--', ...stageable]);
+      } else if (message === undefined) {
+        // Staging is all this action was going to do, so there is nothing left.
+        throw new Error('None of the grouped paths still exist in the working tree or the index.');
+      }
       await assertUnrelatedIndex(runner, unrelated, group);
       if (message === undefined) return;
 
@@ -181,6 +200,25 @@ export async function executeGroupOperation(
   } finally {
     release();
   }
+}
+
+/**
+ * Keeps only the paths Git can still match.
+ *
+ * A pathspec matching nothing makes Git exit fatally, taking a whole group
+ * action with it. That happens for real: stage a rename, and its old path is
+ * gone from both the index and the working tree while still being listed as one
+ * side of the change.
+ */
+async function matchablePaths(root: string, index: IndexRecord[], paths: string[]): Promise<string[]> {
+  const staged = new Set(index.map(record => record.path));
+  const matchable: string[] = [];
+  for (const path of paths) {
+    if (staged.has(path) || await exists(nodePath.join(root, path))) {
+      matchable.push(path);
+    }
+  }
+  return matchable;
 }
 
 /** Turns changes into repo-relative paths, keeping both sides of a rename. */

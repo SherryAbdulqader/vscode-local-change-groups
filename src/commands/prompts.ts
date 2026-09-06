@@ -7,7 +7,8 @@ import {
   LocalGroup,
   normalizeGroupIcon
 } from '../core/groups';
-import { errorMessage } from '../core/text';
+import { frozenLabel } from '../core/frozen';
+import { describeFileCount, errorMessage } from '../core/text';
 import { GroupStore } from '../data/groupStore';
 import { GitApi } from '../git/api';
 import { ChangeGroupsTreeProvider } from '../view/changeTree';
@@ -39,6 +40,45 @@ export async function pickGroup(store: GroupStore, placeHolder: string): Promise
     { placeHolder }
   );
   return selection?.group;
+}
+
+/**
+ * Pick a group that is currently frozen.
+ *
+ * Offering every group and then rejecting the unfrozen ones would be a worse
+ * conversation, so the picker only ever shows what the command can act on.
+ */
+export async function pickFrozenGroup(store: GroupStore, placeHolder: string): Promise<LocalGroup | undefined> {
+  const frozen = store.getAllFrozen();
+  const groups = store.getGroups().filter(group => frozen[group.id]);
+  if (groups.length === 0) {
+    void vscode.window.showInformationMessage('No groups are frozen.');
+    return undefined;
+  }
+  const selection = await vscode.window.showQuickPick(
+    groups.map(group => ({
+      label: group.name,
+      description: `frozen ${frozenLabel(frozen[group.id].frozenAt)} · ${describeFileCount(frozen[group.id].files.length)}`,
+      group
+    })),
+    { placeHolder, matchOnDescription: true }
+  );
+  return selection?.group;
+}
+
+/** Like requireGroupNode, but only ever resolves to a frozen group. */
+export async function requireFrozenGroupNode(
+  node: GroupNode | undefined,
+  store: GroupStore,
+  gitApi: GitApi | undefined,
+  prompt: string
+): Promise<GroupNode | undefined> {
+  if (node?.group) return node;
+  const group = await pickFrozenGroup(store, prompt);
+  if (!group) return undefined;
+  const repositories = gitApi?.repositories ?? [];
+  if (repositories.length !== 1) throw new Error('Run this command from a group row when multiple repositories are open.');
+  return new GroupNode(repositories[0], group, undefined, store.getFrozen(group.id)?.frozenAt);
 }
 
 /** Pick some files, from anywhere across the open repositories. */
