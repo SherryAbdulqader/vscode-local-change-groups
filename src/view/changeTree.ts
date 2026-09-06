@@ -112,8 +112,13 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
       return this.topLevelNodes(element.repository);
     }
     if (element instanceof SectionNode) {
-      return this.groupNodes(element.repository, element.section)
-        .filter(node => this.visibleChanges(node).length > 0);
+      const groups = this.groupNodes(element.repository, element.section);
+      // Changes is where a group lives, so every group shows there even while
+      // empty — otherwise a group you just made would be invisible, with nowhere
+      // to drop files into. Staged and Frozen list only what they actually hold.
+      return element.section === 'unstaged'
+        ? groups
+        : groups.filter(node => this.visibleChanges(node).length > 0);
     }
     if (element instanceof GroupNode) {
       const frozenRow = element.section === 'frozen';
