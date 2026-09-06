@@ -36,6 +36,12 @@ export function registerGitCommands(context: CommandContext): vscode.Disposable[
         await vscode.commands.executeCommand('localChangeGroups.openFrozenChange', node);
         return;
       }
+      // A live row for a file that is frozen elsewhere measures from the freeze,
+      // so you see the work done since and not the frozen change all over again.
+      if (node.pinnedBase) {
+        await vscode.commands.executeCommand('localChangeGroups.compareFrozenWithCurrent', node);
+        return;
+      }
       const { change } = node.displayChange;
       // Nothing committed to compare against, so just open the file.
       if (change.status === UNTRACKED) {

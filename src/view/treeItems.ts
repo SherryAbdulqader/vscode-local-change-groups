@@ -95,10 +95,13 @@ export function fileItem(node: FileNode): vscode.TreeItem {
   const { displayChange } = node;
   const item = new vscode.TreeItem(nodePath.basename(displayChange.relativePath), vscode.TreeItemCollapsibleState.None);
   item.id = `file:${node.section ?? 'all'}:${node.groupId ?? 'ungrouped'}:${displayChange.fileKey}`;
-  item.description = directoryLabel(displayChange.relativePath);
+  const folder = directoryLabel(displayChange.relativePath);
+  item.description = node.pinnedBase ? `${folder}${folder ? ' ' : ''}· since freeze` : folder;
   item.tooltip = node.frozen
     ? `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · frozen\nOpens the snapshot, not the current file.`
-    : `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
+    : node.pinnedBase
+      ? `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · changed since the freeze\nDiffs against the frozen copy, so the frozen change is not shown again.`
+      : `${displayChange.relativePath}\n${statusLabel(displayChange.change.status)} · ${displayChange.area}`;
   item.resourceUri = changeDecorationUri(displayChange.change.uri, displayChange.change.status, node.groupColor);
   const membership = node.groupId ? 'grouped' : 'ungrouped';
   const state = node.frozen ? '.frozen' : node.section ? `.${node.section}` : '';

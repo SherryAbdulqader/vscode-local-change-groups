@@ -166,6 +166,12 @@
         "category": "Local Change Groups"
       },
       {
+        "command": "localChangeGroups.commitSinceFreeze",
+        "title": "Commit Group Since Freeze",
+        "icon": "$(git-commit)",
+        "category": "Local Change Groups"
+      },
+      {
         "command": "localChangeGroups.commitAndPushGroup",
         "title": "Commit & Push Group",
         "icon": "$(cloud-upload)",
@@ -471,6 +477,11 @@
           "command": "localChangeGroups.refreezeGroup",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
           "group": "inline@1"
+        },
+        {
+          "command": "localChangeGroups.commitSinceFreeze",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "group": "git@3_5"
         }
       ]
     }

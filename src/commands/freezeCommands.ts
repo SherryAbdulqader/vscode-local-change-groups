@@ -2,10 +2,11 @@ import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
 import { frozenLabel } from '../core/frozen';
 import { FreezeContext, freezeGroup, refreezeGroup, unfreezeAll, unfreezeGroup } from '../services/freezeActions';
+import { commitSinceFreeze } from '../services/splitCommit';
 import { frozenUri } from '../view/frozenContent';
 import { FileNode, GroupNode } from '../view/nodes';
 import { CommandContext, runCommand } from './context';
-import { requireFrozenGroupNode, requireGroupNode } from './prompts';
+import { promptCommitMessage, requireFrozenGroupNode, requireGroupNode } from './prompts';
 
 /**
  * Freeze, unfreeze, and the two ways of looking at a frozen file.
@@ -44,6 +45,18 @@ export function registerFreezeCommands(
     })),
 
     /**
+     * Commits a group without the frozen change its files still carry, leaving
+     * that change uncommitted in the working tree. See services/splitCommit.
+     */
+    vscode.commands.registerCommand('localChangeGroups.commitSinceFreeze', (node?: GroupNode) => runCommand(output, async () => {
+      const selected = await requireGroupNode(node, store, gitApi, 'Select a group to commit since its freeze');
+      if (!selected) return;
+      const message = await promptCommitMessage(selected.group!);
+      if (!message) return;
+      await commitSinceFreeze(freezeContext(), selected, message);
+    })),
+
+    /**
      * The diff a frozen row opens: the committed side against the bytes you
      * froze. Both come from storage, so it shows the same thing today as it did
      * the moment you froze it, no matter what has happened to the file since.
@@ -70,16 +83,18 @@ export function registerFreezeCommands(
      * is the one that answers "have I broken this since I parked it?".
      */
     vscode.commands.registerCommand('localChangeGroups.compareFrozenWithCurrent', (node?: FileNode) => runCommand(output, async () => {
-      if (!node?.frozen) {
-        throw new Error('Select a file in a frozen group.');
+      // Works from either side: a frozen row, or a live row whose file was
+      // frozen in some other group.
+      const frozen = node?.frozen ?? node?.pinnedBase;
+      if (!node || !frozen) {
+        throw new Error('Select a file that belongs to a frozen group.');
       }
-      const { frozen } = node;
       const name = nodePath.basename(frozen.relativePath);
       await vscode.commands.executeCommand(
         'vscode.diff',
         frozenUri(frozen.relativePath, frozen.frozenHash, 'frozen'),
         node.displayChange.change.uri,
-        `${name} (frozen ↔ current)`,
+        `${name} (since freeze)`,
         { preview: true }
       );
     }))

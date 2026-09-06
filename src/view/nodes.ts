@@ -60,6 +60,13 @@ export class FileNode {
      * Present when the row belongs to a frozen group. Carries the two blob
      * hashes its diff is built from, so opening it never has to ask Git.
      */
-    public readonly frozen?: FrozenFile
+    public readonly frozen?: FrozenFile,
+    /**
+     * Present on a *live* row whose file was frozen elsewhere.
+     *
+     * The freeze becomes this row's baseline, so its diff shows only what
+     * changed after the freeze rather than replaying the frozen change too.
+     */
+    public readonly pinnedBase?: FrozenFile
   ) {}
 }

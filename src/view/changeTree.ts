@@ -38,6 +38,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   private readonly repositorySubscriptions = new Map<GitRepository, vscode.Disposable>();
   private readonly apiSubscriptions: vscode.Disposable[] = [];
   private readonly groupingCache = new Map<GitRepository, Map<string, DisplayChange[]>>();
+  private baselineCache: Map<string, FrozenFile> | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   public readonly onDidChangeTreeData = this.changedEmitter.event;
 
@@ -81,6 +82,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   public refresh(): void {
     this.cancelScheduledRefresh();
     this.groupingCache.clear();
+    this.baselineCache = undefined;
     this.changedEmitter.fire();
   }
 
@@ -114,12 +116,14 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
         .filter(node => this.visibleChanges(node).length > 0);
     }
     if (element instanceof GroupNode) {
+      const frozenRow = element.section === 'frozen';
       return this.visibleChanges(element).map(change => new FileNode(
         change,
         element.group?.id,
         element.group?.color,
         element.section,
-        this.frozenFile(element.group?.id, change.fileKey)
+        frozenRow ? this.frozenFile(element.group?.id, change.fileKey) : undefined,
+        frozenRow ? undefined : this.frozenBaseline(change.fileKey)
       ));
     }
     return [];
@@ -280,6 +284,25 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   private frozenFile(groupId: string | undefined, fileKey: string): FrozenFile | undefined {
     if (!groupId) return undefined;
     return this.store.getFrozen(groupId)?.files.find(file => file.fileKey === fileKey);
+  }
+
+  /**
+   * The freeze that should act as a live row's baseline, if there is one.
+   *
+   * Built once per repaint: a file can only be frozen in one group, so a flat
+   * lookup by key is enough, and scanning every snapshot for every row would be
+   * wasteful for something that changes only when a group is frozen.
+   */
+  private frozenBaseline(fileKey: string): FrozenFile | undefined {
+    if (!this.baselineCache) {
+      this.baselineCache = new Map();
+      for (const snapshot of Object.values(this.store.getAllFrozen())) {
+        for (const file of snapshot.files) {
+          this.baselineCache.set(file.fileKey, file);
+        }
+      }
+    }
+    return this.baselineCache.get(fileKey);
   }
 
   /** Adds up a section across all its groups, for the number in the header. */
