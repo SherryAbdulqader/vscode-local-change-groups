@@ -117,3 +117,20 @@ test('a snapshot does not match a sibling repository with a similar name', () =>
   // show a frozen group whose files are nowhere under its root.
   assert.equal(snapshotBelongsTo(snapshot, '/work/api-client', 'linux'), false);
 });
+
+test('the protected flag survives a load, and only when it is really true', () => {
+  const state = normalizePersistedState({
+    groups: [
+      { id: 'a', name: 'Local only', protected: true },
+      { id: 'b', name: 'Tests', protected: 'yes' },
+      { id: 'c', name: 'Docs' }
+    ],
+    assignments: {}
+  });
+
+  assert.equal(state.groups[0].protected, true);
+  // Anything that is not exactly true reads as not protected. Guessing here
+  // would either invent a guard nobody asked for or drop one they did.
+  assert.equal('protected' in state.groups[1], false);
+  assert.equal('protected' in state.groups[2], false);
+});

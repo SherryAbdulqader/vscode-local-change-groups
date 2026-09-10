@@ -122,6 +122,23 @@ export class GroupStore {
     await this.mutate(next => { this.requireGroup(next, groupId).color = color; });
   }
 
+  /**
+   * Marks a group as never-commit, or takes the mark off again.
+   *
+   * Deliberately not bundled into rename or recolor: this one changes what Git
+   * actions will agree to do, so it gets its own call and its own command.
+   */
+  public async setGroupProtected(groupId: string, isProtected: boolean): Promise<void> {
+    await this.mutate(next => {
+      const group = this.requireGroup(next, groupId);
+      if (isProtected) {
+        group.protected = true;
+      } else {
+        delete group.protected;
+      }
+    });
+  }
+
   /** Swaps a group's icon. */
   public async setGroupIcon(groupId: string, icon: string): Promise<void> {
     const normalized = normalizeGroupIcon(icon);

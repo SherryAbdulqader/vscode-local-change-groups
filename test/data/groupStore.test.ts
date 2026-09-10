@@ -345,3 +345,32 @@ test('an order full of unknown ids leaves the groups alone', async () => {
 function target(fileKey: string) {
   return { fileKey, assignmentKeys: [fileKey] };
 }
+
+test('a group can be marked protected, and it survives a reload', async () => {
+  const memory = new MemoryMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Local only');
+
+  await store.setGroupProtected(group.id, true);
+
+  assert.equal(store.getGroups()[0].protected, true);
+  assert.equal(new GroupStore(memory).getGroups()[0].protected, true);
+});
+
+test('unprotecting removes the flag rather than storing false', async () => {
+  const memory = new MemoryMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Local only');
+  await store.setGroupProtected(group.id, true);
+
+  await store.setGroupProtected(group.id, false);
+
+  // An ordinary group stays an ordinary object, with nothing to misread later.
+  assert.equal('protected' in store.getGroups()[0], false);
+});
+
+test('protecting a group that is not there is refused', async () => {
+  const store = new GroupStore(new MemoryMemento());
+
+  await assert.rejects(store.setGroupProtected('missing', true), /Group not found/);
+});

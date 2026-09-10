@@ -6,6 +6,7 @@ export { CHANGE_SCHEME } from '../core/changeLabels';
 
 const STATUS_QUERY_KEY = 's';
 const COLOR_QUERY_KEY = 'c';
+const ALARM_QUERY_KEY = 'alarm';
 
 /**
  * Builds the fake URI a row wears so it can get a badge.
@@ -22,6 +23,24 @@ export function changeDecorationUri(fileUri: vscode.Uri, status: number, groupCo
     query.set(COLOR_QUERY_KEY, groupColor);
   }
   return vscode.Uri.from({ scheme: CHANGE_SCHEME, path: fileUri.path, query: query.toString() });
+}
+
+/**
+ * The URI a protected group row wears when its files have reached the index.
+ *
+ * Protection stops this extension's own commands, but nothing stops "git add"
+ * in a terminal. When that happens the row has to be impossible to miss, and a
+ * decoration is the only way to get red text onto a tree row.
+ *
+ * The group id is in the path only to keep each row's URI distinct. Nothing
+ * reads it back.
+ */
+export function protectedAlarmUri(groupId: string): vscode.Uri {
+  return vscode.Uri.from({
+    scheme: CHANGE_SCHEME,
+    path: `/group/${encodeURIComponent(groupId)}`,
+    query: new URLSearchParams({ [ALARM_QUERY_KEY]: '1' }).toString()
+  });
 }
 
 /**
@@ -67,6 +86,15 @@ export class ChangeDecorationProvider implements vscode.FileDecorationProvider, 
       return undefined;
     }
     const query = new URLSearchParams(uri.query);
+    if (query.get(ALARM_QUERY_KEY)) {
+      const alarm = new vscode.FileDecoration(
+        '!',
+        'Protected, but staged. An ordinary commit would include it.',
+        new vscode.ThemeColor('errorForeground')
+      );
+      alarm.propagate = false;
+      return alarm;
+    }
     const status = Number(query.get(STATUS_QUERY_KEY));
     if (!Number.isInteger(status)) {
       return undefined;

@@ -110,7 +110,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
       return sectionItem(element, this.sectionCount(element));
     }
     if (element instanceof GroupNode) {
-      return groupItem(element, this.visibleChanges(element).length);
+      return groupItem(element, this.visibleChanges(element).length, this.stagedWhileProtected(element));
     }
     return fileItem(element);
   }
@@ -187,6 +187,25 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   public getGroupChanges(node: GroupNode): DisplayChange[] {
     if (!node.group) throw new Error('Select a named group.');
     return this.changesForGroup(node.repository, node.group.id);
+  }
+
+  /**
+   * Is this a protected group whose files have reached the index?
+   *
+   * Protection stops our own commands, but nothing stops "git add" in a
+   * terminal, or the built-in Source Control view, or a script. When that
+   * happens the next ordinary commit would take the group along, so the row has
+   * to say so rather than quietly looking fine.
+   *
+   * Sections are ignored on purpose: the warning is about the group, not about
+   * whichever half of it you happen to be looking at.
+   */
+  private stagedWhileProtected(node: GroupNode): boolean {
+    if (!node.group?.protected) {
+      return false;
+    }
+    return this.changesForGroup(node.repository, node.group.id)
+      .some(change => isInSection(change.area, 'staged'));
   }
 
   /**

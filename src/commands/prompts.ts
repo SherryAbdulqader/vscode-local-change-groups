@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import {
+  suggestedBranchName,
   DEFAULT_GROUP_ICON,
   GROUP_COLORS,
   GROUP_ICONS,
@@ -206,6 +207,25 @@ export async function pickIcon(current?: string): Promise<string | undefined> {
     }
   });
   return typed ? normalizeGroupIcon(typed) : undefined;
+}
+
+/**
+ * Asks for the branch to move a group onto.
+ *
+ * Pre-filled from the group name and pre-selected, so the common case is Enter
+ * and the unusual case is typing over it. Only the obvious is checked here; Git
+ * decides what is actually a legal ref.
+ */
+export async function promptBranchName(group: LocalGroup): Promise<string | undefined> {
+  const suggested = suggestedBranchName(group.name);
+  const name = await vscode.window.showInputBox({
+    title: `Move Group to New Branch: ${group.name}`,
+    prompt: 'Name for the new branch',
+    value: suggested,
+    valueSelection: [0, suggested.length],
+    validateInput: value => value.trim() ? undefined : 'Enter a branch name.'
+  });
+  return name?.trim() || undefined;
 }
 
 /** Ask for a commit message. Refuses to accept an empty one. */

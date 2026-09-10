@@ -6,6 +6,25 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Protected groups.** Mark a group "never commit" and it refuses to be staged,
+  committed, or pushed — through the menus, the commit box, and the Command
+  Palette alike, because the refusal lives in the one service every route passes
+  through. The row shows a shield and says so.
+
+  And when its files reach the index by some other means — `git add` in a
+  terminal, the built-in Source Control view, a script — the row turns red and
+  says *staged, will be committed*, because the next ordinary commit would take
+  them. It is a guard rail rather than a lock, and it does not pretend otherwise.
+- **Move Group to New Branch.** Commits one group onto a brand-new branch and
+  puts you back on the branch you were on, with everything outside the group
+  untouched. The trick is that branching at the current commit moves no files, so
+  it is: branch, commit only the group, check out the old branch — no stash and
+  nothing to lose track of.
+
+  The branch name is suggested from the group name and validated by Git's own
+  `check-ref-format`; an existing branch is refused up front. If anything fails
+  the commit is never destroyed: an empty branch we made is deleted, and a branch
+  holding your work is kept and named in the error.
 - **Auto-assign by path.** A new `localChangeGroups.autoAssign` setting maps globs
   to group names, so new changes land in the right group without you filing them.
   Groups named in a rule are created if they do not exist. Patterns are the VS
@@ -28,12 +47,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it. Drag a group onto another to drop it above, drag onto **Ungrouped** to send
   it to the end, or use **Move Group Up** / **Move Group Down** from the context
   menu. **Sort Groups by Name** is in the view title menu.
+- **Assign All Ungrouped to Group**, on the **Ungrouped** row and in the Command
+  Palette. Takes every ungrouped change in one move rather than a file at a time,
+  and offers creating a group inline so it still works with no groups yet. Frozen
+  groups are omitted from the picker because they refuse new files until unfrozen.
+  The action is hidden on an empty Ungrouped row.
 
 ### Changed
 - The README is rewritten around what the extension does rather than how it is
   built, with a table per feature and the pattern-matching rules spelled out.
+- The rule for what counts as ungrouped — the plain bucket plus any change whose
+  group has since been frozen — now lives in one place, shared by the tree and the
+  new bulk action, so the two cannot disagree about which files are included.
 
 ### Fixed
+- Test repositories no longer inherit the machine's `core.autocrlf` setting, so
+  assertions about file contents stopped depending on who ran the suite.
 - With more than one repository open, a frozen group appeared under every one of
   them, and its file rows pointed at whichever repository the row happened to
   live under. A freeze captures files from one repository, so it now only counts
@@ -65,18 +94,6 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   conflict. That is what the next commit contains, so hiding it would be a good
   way to commit something you did not mean to. A file the freeze skipped (a
   binary, say) also stays listed, since no frozen row is showing it.
-
-### Added
-- **Assign All Ungrouped to Group**, on the **Ungrouped** row and in the Command
-  Palette. Takes every ungrouped change in one move rather than a file at a time,
-  and offers creating a group inline so it still works with no groups yet. Frozen
-  groups are omitted from the picker because they refuse new files until unfrozen.
-  The action is hidden on an empty Ungrouped row.
-
-### Changed
-- The rule for what counts as ungrouped — the plain bucket plus any change whose
-  group has since been frozen — now lives in one place, shared by the tree and the
-  new bulk action, so the two cannot disagree about which files are included.
 
 ## [0.3.0]
 

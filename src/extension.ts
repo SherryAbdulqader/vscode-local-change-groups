@@ -138,7 +138,8 @@ function buildCommitPanel(commands: CommandContext): CommitPanelProvider {
         id: group.id,
         name: group.name,
         color: group.color,
-        count: countGroupFiles(commands, group.id)
+        count: countGroupFiles(commands, group.id),
+        protected: group.protected === true
       }))
     }),
     (action, groupId, message) => runCommand(

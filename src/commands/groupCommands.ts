@@ -161,6 +161,33 @@ export function registerGroupCommands(context: CommandContext): vscode.Disposabl
       await fileIntoGroup(changes, `all ${describeFileCount(changes.length)}`);
     })),
 
+    vscode.commands.registerCommand('localChangeGroups.protectGroup', (node?: GroupNode) => runCommand(output, async () => {
+      const group = node?.group ?? await pickGroup(store, 'Select a group to protect');
+      if (!group) return;
+      await store.setGroupProtected(group.id, true);
+      provider.refresh();
+      output.appendLine(`Protected ${group.name}: it will not be staged, committed, or pushed`);
+      void vscode.window.showInformationMessage(
+        `"${group.name}" is protected. It will not be staged, committed, or pushed.`
+      );
+    })),
+
+    vscode.commands.registerCommand('localChangeGroups.unprotectGroup', (node?: GroupNode) => runCommand(output, async () => {
+      const group = node?.group ?? await pickGroup(store, 'Select a group to unprotect');
+      if (!group) return;
+      // Worth a confirmation. Taking the guard off is the moment the debug
+      // logging becomes committable again, and that should be a decision.
+      const answer = await vscode.window.showWarningMessage(
+        `Unprotect "${group.name}"? It will be committable again.`,
+        { modal: true },
+        'Unprotect'
+      );
+      if (answer !== 'Unprotect') return;
+      await store.setGroupProtected(group.id, false);
+      provider.refresh();
+      output.appendLine(`Unprotected ${group.name}`);
+    })),
+
     vscode.commands.registerCommand('localChangeGroups.moveGroupUp', (node?: GroupNode) => runCommand(output, () => shiftGroup(node, -1))),
 
     vscode.commands.registerCommand('localChangeGroups.moveGroupDown', (node?: GroupNode) => runCommand(output, () => shiftGroup(node, 1))),

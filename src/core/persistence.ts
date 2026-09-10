@@ -38,7 +38,11 @@ export function normalizePersistedState(value: unknown): PersistedState {
         id: group.id,
         name: group.name,
         color: isGroupColor(group.color) ? group.color : DEFAULT_GROUP_COLOR,
-        ...(isGroupIcon(group.icon) ? { icon: group.icon } : {})
+        ...(isGroupIcon(group.icon) ? { icon: group.icon } : {}),
+        // Only stored when true, so an ordinary group stays a small object and
+        // anything odd in storage reads as "not protected" rather than as
+        // protection nobody asked for.
+        ...(group.protected === true ? { protected: true } : {})
       }))
     : [];
 

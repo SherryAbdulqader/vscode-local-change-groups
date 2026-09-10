@@ -20,7 +20,7 @@ LOCAL CHANGE GROUPS
 │  └─ 🚀 Ready to ship           2
 └─ Changes                       6
    ├─ 🧪 Tests                   2   ← auto-filed by a rule
-   ├─ 🔒 Local only              3   ← debug logging, never leaves your machine
+   ├─ 🛡 Local only          3 · protected   ← refuses to be committed
    └─ Ungrouped                  1
 ```
 
@@ -48,8 +48,53 @@ Only that group gets committed. Everything else stays exactly as it was.
 | Delete a group | Right-click the group. Its files go back to Ungrouped; nothing on disk changes |
 | Reorder groups | Drag a group onto another one, or right-click → **Move Group Up** / **Move Group Down** |
 | Sort groups A–Z | View title menu → **Sort Groups by Name** |
+| Protect a group | Right-click → **Protect Group (Never Commit)** |
+| Move a group to its own branch | Right-click → **Move Group to New Branch...** |
 
 Pick from **eight theme-aware colors** and **sixteen icons** — a beaker for Tests, a lock for Local Only, a rocket for what is ready to ship. Or type any VS Code codicon id. Emoji work too: just put one in the group name.
+
+### Protect a group — "never commit this"
+
+Some changes are only ever for your machine: debug logging, a hard-coded token, a local config tweak. Right-click a group and choose **Protect Group (Never Commit)**.
+
+A protected group:
+
+- **Refuses** to be staged, committed, or pushed. Every route is blocked — the menus, the commit box, and the Command Palette.
+- Shows a **shield** icon and says *protected* next to its count.
+- Is greyed out in the commit box, with the reason underneath.
+
+**If its files get staged anyway** — by `git add` in a terminal, or the built-in Source Control view, or a script — the row turns **red** and says *staged, will be committed*. Unstage the group and it goes quiet again.
+
+Unprotecting asks you to confirm, because that is the moment the debug code becomes committable again.
+
+> **Be clear about what this is.** It is a guard rail, not a lock. Nothing in a VS Code extension can stop `git commit -a` in a terminal. What it can do is refuse to help, and tell you loudly when something else already has.
+
+### Move a group to a new branch
+
+The realisation everyone has three hours in: half of this belongs somewhere else.
+
+Right-click a group and choose **Move Group to New Branch...**
+
+```
+On main, 11 changed files
+   └─ 🚀 Auth rewrite (4 files)  →  "Move Group to New Branch..."
+         creates feature/auth, commits only those 4 there,
+         and puts you back on main with the other 7 untouched
+```
+
+Three steps, and none of them involve a stash:
+
+1. **Branch off your current commit.** Nothing on disk moves, because both branches agree about every file.
+2. **Commit only the group** — exactly what **Commit Group** does.
+3. **Check out your old branch.** The group's files go back to their old content there, because the change now lives in the new commit.
+
+Everything you had uncommitted outside the group simply comes along.
+
+The branch name is suggested from the group name — "Auth rewrite" becomes `auth-rewrite` — and Git has the final say on whether it is legal. An existing branch name is refused before anything happens.
+
+**If it goes wrong, the commit is never destroyed.** A branch that was created but never committed to is deleted and you end up back where you started. A branch with your work on it is kept, and the error names it — even if returning to your old branch failed.
+
+The new branch is local. Nothing is pushed and no upstream is set.
 
 ### Filing files
 
@@ -166,6 +211,7 @@ Frozen snapshots are deliberately not exported. They are megabytes of your file 
 | **Unstage Group** | Takes it back out of the index, working tree untouched |
 | **Commit Group** | Commits only that group |
 | **Commit & Push Group** | Commits and pushes it, behind a confirmation naming the group and branch |
+| **Move Group to New Branch...** | Commits the group on a new branch and returns you to this one |
 | **Discard All Changes in Group** | Throws the group's working-tree changes away, behind a modal |
 
 There is also a commit box at the top of the view, like the one in Source Control: pick a group, type a message, press `Ctrl+Enter`. Unsent messages are kept per group.
@@ -240,6 +286,8 @@ The extension is disabled in untrusted and virtual workspaces.
 - **Discard** touches working-tree changes only. A file staged with no further edit is left alone rather than being unstaged.
 - Renames keep their group when the Git API reports the old path. Unrelated moves may need refiling.
 - A freeze belongs to the repository it was taken in. With several open, the same group is an ordinary live group in the others.
+- **Protection cannot stop Git itself.** It refuses this extension's own actions and warns you when a protected group reaches the index, but a commit made outside VS Code will take whatever is staged.
+- **Move to New Branch** needs a named branch, no merge or rebase in progress, and no partially staged files inside the group — the same conditions as **Commit Group**. It never pushes and never sets an upstream.
 
 ---
 

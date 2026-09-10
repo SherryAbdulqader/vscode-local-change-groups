@@ -3,12 +3,13 @@ import {
   commitAndPushGroup,
   commitGroup,
   discardChanges,
+  moveGroupToBranch,
   stageGroup,
   unstageChanges
 } from '../services/changeActions';
 import { FileNode, GroupNode } from '../view/nodes';
 import { actionContext, CommandContext, runCommand } from './context';
-import { pickChanges, promptCommitMessage, requireGroupNode } from './prompts';
+import { pickChanges, promptBranchName, promptCommitMessage, requireGroupNode } from './prompts';
 import { selectedChanges } from './selection';
 
 /** Git's status number for untracked. There is nothing to diff it against. */
@@ -71,6 +72,16 @@ export function registerGitCommands(context: CommandContext): vscode.Disposable[
       const message = await promptCommitMessage(selected.group!);
       if (!message) return;
       await commitAndPushGroup(actionContext(context), selected, message);
+    })),
+
+    vscode.commands.registerCommand('localChangeGroups.moveGroupToBranch', (node?: GroupNode) => runCommand(output, async () => {
+      const selected = await requireGroupNode(node, store, gitApi, 'Select a group to move to a new branch');
+      if (!selected) return;
+      const branchName = await promptBranchName(selected.group!);
+      if (!branchName) return;
+      const message = await promptCommitMessage(selected.group!);
+      if (!message) return;
+      await moveGroupToBranch(actionContext(context), selected, branchName, message);
     })),
 
     vscode.commands.registerCommand('localChangeGroups.unstageGroup', (node?: GroupNode) => runCommand(output, async () => {

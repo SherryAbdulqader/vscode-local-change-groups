@@ -104,6 +104,22 @@
         "category": "Local Change Groups"
       },
       {
+        "command": "localChangeGroups.protectGroup",
+        "title": "Protect Group (Never Commit)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.unprotectGroup",
+        "title": "Unprotect Group",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.moveGroupToBranch",
+        "title": "Move Group to New Branch...",
+        "icon": "$(git-branch)",
+        "category": "Local Change Groups"
+      },
+      {
         "command": "localChangeGroups.exportLayout",
         "title": "Export Group Layout...",
         "category": "Local Change Groups"
@@ -391,17 +407,17 @@
       "view/item/context": [
         {
           "command": "localChangeGroups.renameGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/ && !(viewItem =~ /\\.frozen$/)",
           "group": "inline@1"
         },
         {
           "command": "localChangeGroups.deleteGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/ && !(viewItem =~ /\\.frozen$/)",
           "group": "inline@3"
         },
         {
           "command": "localChangeGroups.changeColor",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/ && !(viewItem =~ /\\.frozen$/)",
           "group": "inline@2"
         },
         {
@@ -453,6 +469,21 @@
           "command": "localChangeGroups.moveGroupDown",
           "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
           "group": "2_order@2"
+        },
+        {
+          "command": "localChangeGroups.protectGroup",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/ && !(viewItem =~ /\\.protected/)",
+          "group": "0_guard@1"
+        },
+        {
+          "command": "localChangeGroups.unprotectGroup",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group\\.protected/",
+          "group": "0_guard@2"
+        },
+        {
+          "command": "localChangeGroups.moveGroupToBranch",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
+          "group": "git@5"
         },
         {
           "command": "localChangeGroups.assignToGroup",
@@ -521,22 +552,22 @@
         },
         {
           "command": "localChangeGroups.freezeGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/ && !(viewItem =~ /\\.frozen$/)",
           "group": "inline@0"
         },
         {
           "command": "localChangeGroups.freezeGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/ && !(viewItem =~ /\\.frozen$/)",
           "group": "0_freeze@1"
         },
         {
           "command": "localChangeGroups.unfreezeGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group.*\\.frozen$/",
           "group": "inline@0"
         },
         {
           "command": "localChangeGroups.unfreezeGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group.*\\.frozen$/",
           "group": "0_freeze@1"
         },
         {
@@ -556,17 +587,17 @@
         },
         {
           "command": "localChangeGroups.refreezeGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group.*\\.frozen$/",
           "group": "0_freeze@2"
         },
         {
           "command": "localChangeGroups.refreezeGroup",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group.frozen",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group.*\\.frozen$/",
           "group": "inline@1"
         },
         {
           "command": "localChangeGroups.commitSinceFreeze",
-          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.group",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/ && !(viewItem =~ /\\.frozen$/)",
           "group": "git@3_5"
         }
       ]

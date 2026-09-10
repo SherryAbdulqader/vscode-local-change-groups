@@ -19,6 +19,14 @@ export interface PanelGroup {
   name: string;
   color: LocalGroup['color'];
   count: number;
+  /**
+   * Protected groups are shown but cannot be acted on.
+   *
+   * Hiding them would be simpler and worse: you would go looking for a group
+   * and find it missing. Better to show it, say why, and grey out the buttons.
+   * The host refuses these anyway — this only saves you the click.
+   */
+  protected: boolean;
 }
 
 /** Everything the panel needs to render one frame. */

@@ -15,6 +15,18 @@ export interface LocalGroup {
   color: GroupColor;
   /** A VS Code codicon id; absent means the plain colored dot. */
   icon?: string;
+  /**
+   * "Never commit this."
+   *
+   * For the group holding debug logging, a hard-coded token, or local config —
+   * the things you want on your machine and nowhere else. A protected group
+   * refuses to be staged, committed, or pushed by anything in this extension,
+   * and the row shouts if its files reach the index by some other route.
+   *
+   * It is a guard rail, not a lock. Nothing here can stop "git commit -a" in a
+   * terminal, and nothing pretends to.
+   */
+  protected?: boolean;
 }
 
 export const GROUP_COLORS = ['blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'red', 'gray'] as const;
@@ -81,6 +93,24 @@ export function isGroupColor(value: unknown): value is GroupColor {
 /** Is this something ThemeIcon will actually draw? */
 export function isGroupIcon(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 40 && ICON_PATTERN.test(value);
+}
+
+/**
+ * A branch name suggestion built from a group name.
+ *
+ * "Auth rewrite!" becomes "auth-rewrite". Only a suggestion: it lands in an
+ * input box you can edit, and Git has the final say on whether it is legal.
+ */
+export function suggestedBranchName(groupName: string): string {
+  const slug = groupName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+  // An all-emoji group name leaves nothing behind, and an empty suggestion is
+  // worse than a dull one.
+  return slug || 'change-group';
 }
 
 /**

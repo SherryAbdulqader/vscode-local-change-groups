@@ -203,6 +203,198 @@ export async function executeGroupOperation(
 }
 
 /**
+ * Moves one group onto a brand-new branch, and leaves you back where you were.
+ *
+ * The realisation everyone has three hours in: half of this belongs somewhere
+ * else. By hand it is a stash, a checkout -b, a commit, a checkout back and a
+ * stash pop, with a decent chance of losing track in the middle.
+ *
+ * The thing that makes it simple is that branching at the current commit touches
+ * no files at all. So the whole operation is:
+ *
+ *   1. branch off HEAD           — working tree and index untouched
+ *   2. commit only the group     — exactly what Commit Group does
+ *   3. check out the old branch  — the group's files go back to their old
+ *                                  content, because the change now lives in the
+ *                                  new commit
+ *
+ * Everything you had uncommitted outside the group simply comes along: Git
+ * carries uncommitted work across a branch switch when both branches agree about
+ * those files, and here they do, because the branches share a commit.
+ *
+ * One rule when it goes wrong: **never destroy the commit**. A branch we created
+ * but never committed to is deleted; a branch with the work on it is kept and
+ * named in the error, even when getting back to the old branch failed.
+ */
+export async function commitGroupOnNewBranch(
+  repository: GitRepository,
+  preview: GroupOperationPlan,
+  gitExecutable: string,
+  requestedBranch: string,
+  message: string,
+  log?: (message: string) => void
+): Promise<string> {
+  if (preview.kind !== 'commit') throw new Error('Moving a group to a branch needs a commit plan.');
+  if (!message.trim()) throw new Error('A commit message is required.');
+  if (Buffer.byteLength(message, 'utf8') > 10_000) throw new Error('Commit messages cannot exceed 10,000 bytes.');
+
+  const release = acquireRepositoryLock(repository.rootUri.fsPath);
+  const runner = new GitRunner(gitExecutable, repository.rootUri.fsPath, log);
+  try {
+    await repository.status();
+    const live = buildOperationPlan(repository, findPlanChanges(repository, preview.paths), 'commit');
+    assertPlanUnchanged(preview, live);
+    const before = await captureSnapshot(runner, repository, false);
+    assertSnapshotMatchesPlan(before, preview);
+
+    const branch = await validatedBranchName(runner, requestedBranch, before.branch);
+    const group = new Set(preview.paths);
+    const unrelated = recordsOutside(before.index, group);
+    const initiallyStaged = new Set(expandChangePaths(repository.rootUri.fsPath, repository.state.indexChanges));
+    const owned = preview.paths.filter(path => !initiallyStaged.has(path));
+    const stageable = await matchablePaths(runner.root, before.index, preview.paths);
+
+    let created = false;
+    let committed = false;
+    try {
+      await runner.run(['checkout', '-b', branch]);
+      created = true;
+
+      // Branching at the same commit should have moved nothing. Check, because
+      // everything after this assumes it.
+      const onBranch = await captureSnapshot(runner, repository, false);
+      if (onBranch.branch !== branch || onBranch.head !== before.head) {
+        throw new Error('Creating the branch did not leave HEAD where it was. Nothing was committed.');
+      }
+      await assertUnrelatedIndex(runner, unrelated, group);
+
+      if (stageable.length > 0) {
+        await runner.run(['--literal-pathspecs', 'add', '-A', '--', ...stageable]);
+      }
+      await assertUnrelatedIndex(runner, unrelated, group);
+      await runner.run(['--literal-pathspecs', 'commit', '--only', '-m', message, '--', ...preview.paths]);
+      committed = true;
+
+      const after = await captureSnapshot(runner, repository, false);
+      if (after.branch !== branch) throw new Error('The branch changed while committing. Inspect the repository.');
+      const parents = words((await runner.run(['rev-list', '--parents', '-n', '1', after.head])).stdout);
+      if (parents.length !== 2 || parents[0] !== after.head || parents[1] !== before.head) {
+        throw new Error(`The commit on "${branch}" is not exactly one direct child of the captured HEAD.`);
+      }
+      const committedPaths = nulPaths((await runner.run(['--literal-pathspecs', 'diff-tree', '--no-commit-id', '--name-only', '-r', '-z', after.head])).stdout);
+      assertPathSet(committedPaths, preview.paths, `The commit on "${branch}" contains paths outside the selected group.`);
+      await assertUnrelatedIndex(runner, unrelated, group);
+    } catch (error) {
+      if (!committed) {
+        if (!created) throw error;
+        await abandonBranch(runner, before, branch, owned, error);
+      }
+      // The work is committed, so the branch stays whatever else went wrong.
+      throw new Error(`${errorMessage(error)} The commit is on "${branch}"; inspect the repository.`);
+    }
+
+    await returnToBranch(runner, repository, before, branch);
+    await assertUnrelatedIndex(runner, unrelated, group);
+    await repository.status();
+    return branch;
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Checks a branch name is one Git will take, and is not already taken.
+ *
+ * check-ref-format is the authority rather than a regex of our own, because it
+ * knows all the rules including the ones nobody remembers. It prints the name
+ * when it approves and prints nothing when it does not, which is all we need.
+ *
+ * A name starting with a dash gets refused for us: Git reads it as an option and
+ * fails, which is exactly the answer we want.
+ */
+async function validatedBranchName(runner: GitRunner, requested: string, current: string): Promise<string> {
+  const name = requested.trim();
+  if (!name) throw new Error('A branch name is required.');
+  const approved = line((await runner.run(['check-ref-format', '--branch', name], true)).stdout);
+  if (!approved) throw new Error(`"${name}" is not a valid branch name.`);
+  if (approved === current) throw new Error(`You are already on "${current}".`);
+  if ((await runner.run(['rev-parse', '--quiet', '--verify', `refs/heads/${approved}`], true)).stdout.length) {
+    throw new Error(`Branch "${approved}" already exists. Pick another name.`);
+  }
+  return approved;
+}
+
+/**
+ * Undoes a move that never got as far as committing.
+ *
+ * Nothing was saved, so: unstage whatever we staged, go home, delete the branch
+ * we made. Each step is best effort and any trouble is folded into the message,
+ * because the original error is the one worth reading. The branch is only
+ * deleted once we are safely off it.
+ */
+async function abandonBranch(
+  runner: GitRunner,
+  before: GitSnapshot,
+  created: string,
+  owned: string[],
+  primary: unknown
+): Promise<never> {
+  const trouble: string[] = [];
+  if (owned.length) {
+    try {
+      await runner.run(['--literal-pathspecs', 'restore', '--staged', `--source=${before.head}`, '--', ...owned]);
+    } catch (error) {
+      trouble.push(`could not unstage: ${errorMessage(error)}`);
+    }
+  }
+  let home = false;
+  try {
+    await runner.run(['checkout', before.branch]);
+    home = true;
+  } catch (error) {
+    trouble.push(`could not return to "${before.branch}": ${errorMessage(error)}`);
+  }
+  if (home) {
+    try {
+      await runner.run(['branch', '-D', created]);
+    } catch (error) {
+      trouble.push(`could not delete "${created}": ${errorMessage(error)}`);
+    }
+  }
+  throw trouble.length > 0
+    ? new Error(`${errorMessage(primary)} Cleaning up also had trouble: ${trouble.join('; ')}.`)
+    : primary;
+}
+
+/**
+ * Goes back to the branch we started on, and checks we really arrived.
+ *
+ * This step can fail for an honest reason: edit one of the group's files again
+ * in the moment after the commit and Git will refuse to overwrite it. The work
+ * is safe either way, so the message says exactly where it is rather than
+ * leaving someone to guess.
+ */
+async function returnToBranch(
+  runner: GitRunner,
+  repository: GitRepository,
+  before: GitSnapshot,
+  created: string
+): Promise<void> {
+  try {
+    await runner.run(['checkout', before.branch]);
+  } catch (error) {
+    throw new Error(
+      `The group was committed on "${created}", but returning to "${before.branch}" failed: ${errorMessage(error)} ` +
+      `You are still on "${created}" and the commit is safe.`
+    );
+  }
+  const home = await captureSnapshot(runner, repository, false);
+  if (home.branch !== before.branch || home.head !== before.head) {
+    throw new Error(`The group was committed on "${created}", but "${before.branch}" is not where it was. Inspect the repository.`);
+  }
+}
+
+/**
  * Keeps only the paths Git can still match.
  *
  * A pathspec matching nothing makes Git exit fatally, taking a whole group

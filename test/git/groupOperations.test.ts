@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import test from 'node:test';
 import type { GitChange, GitRepository } from '../../src/git/api';
-import { acquireRepositoryLock, buildOperationPlan, executeGroupOperation, expandChangePaths } from '../../src/git/groupOperations';
+import { acquireRepositoryLock, buildOperationPlan, commitGroupOnNewBranch, executeGroupOperation, expandChangePaths } from '../../src/git/groupOperations';
 
 const git = process.env.LOCAL_CHANGE_GROUPS_TEST_GIT || 'git';
 
@@ -211,6 +211,91 @@ test('overlapping edits refuse to be split', async t => {
   assert.ok(merged.includes('<<<<<<<'), 'a conflict is reported rather than a silent guess');
 });
 
+test('moving a group to a new branch commits only that group and comes back', async t => {
+  const root = await repo(t, { 'group.txt': 'one\n', 'other.txt': 'base\n' });
+  await fs.writeFile(path.join(root, 'group.txt'), 'two\n');
+  await fs.writeFile(path.join(root, 'other.txt'), 'edited\n');
+  const repository = mockRepository(root, [change(root, 'group.txt', 0), change(root, 'other.txt', 0)]);
+  await repository.status();
+  const plan = buildOperationPlan(repository, [change(root, 'group.txt', 0)], 'commit');
+  const mainBefore = await revision(root, 'main');
+
+  const branch = await commitGroupOnNewBranch(repository, plan, git, 'feature/group', 'move it');
+
+  assert.equal(branch, 'feature/group');
+  // Back where we started.
+  assert.equal(await currentBranch(root), 'main');
+  // The group's change now lives in the commit on the branch, so on main the
+  // file is back to its committed content.
+  assert.equal(await fs.readFile(path.join(root, 'group.txt'), 'utf8'), 'one\n');
+  // The unrelated edit came along for the ride and is still uncommitted.
+  assert.equal(await fs.readFile(path.join(root, 'other.txt'), 'utf8'), 'edited\n');
+  assert.deepEqual(await refPaths(root, 'feature/group'), ['group.txt']);
+  // Nothing landed on main, and the new commit sits directly on top of it.
+  assert.equal(await revision(root, 'main'), mainBefore);
+  assert.equal(await revision(root, 'feature/group^'), mainBefore);
+});
+
+test('moving a group leaves unrelated staged work byte for byte', async t => {
+  const root = await repo(t, { 'group.txt': 'one\n', 'other.txt': 'a\n' });
+  await fs.writeFile(path.join(root, 'group.txt'), 'two\n');
+  await fs.writeFile(path.join(root, 'other.txt'), 'staged\n');
+  await run(root, ['add', '--', 'other.txt']);
+  const before = await indexRecords(root, ['other.txt']);
+  const repository = mockRepository(root, [change(root, 'group.txt', 0)], [change(root, 'other.txt', 0)]);
+  await repository.status();
+  const plan = buildOperationPlan(repository, [change(root, 'group.txt', 0)], 'commit');
+
+  await commitGroupOnNewBranch(repository, plan, git, 'feature/x', 'move');
+
+  // Two branch switches and a commit, and the hand-staged file never moved.
+  assert.deepEqual(await indexRecords(root, ['other.txt']), before);
+  assert.equal(await currentBranch(root), 'main');
+});
+
+test('moving a group refuses a branch name that is already taken', async t => {
+  const root = await repo(t, { 'group.txt': 'one\n' });
+  await run(root, ['branch', 'taken']);
+  await fs.writeFile(path.join(root, 'group.txt'), 'two\n');
+  const repository = mockRepository(root, [change(root, 'group.txt', 0)]);
+  await repository.status();
+  const plan = buildOperationPlan(repository, [change(root, 'group.txt', 0)], 'commit');
+
+  await assert.rejects(commitGroupOnNewBranch(repository, plan, git, 'taken', 'nope'), /already exists/);
+
+  // Refused before touching anything.
+  assert.equal(await currentBranch(root), 'main');
+  assert.equal(await fs.readFile(path.join(root, 'group.txt'), 'utf8'), 'two\n');
+});
+
+test('moving a group refuses a name Git would not accept', async t => {
+  const root = await repo(t, { 'group.txt': 'one\n' });
+  await fs.writeFile(path.join(root, 'group.txt'), 'two\n');
+  const repository = mockRepository(root, [change(root, 'group.txt', 0)]);
+  await repository.status();
+  const plan = buildOperationPlan(repository, [change(root, 'group.txt', 0)], 'commit');
+
+  // check-ref-format is the authority, not a regex of ours.
+  await assert.rejects(commitGroupOnNewBranch(repository, plan, git, 'bad name', 'nope'), /not a valid branch name/);
+  await assert.rejects(commitGroupOnNewBranch(repository, plan, git, 'main', 'nope'), /already on/);
+
+  assert.equal(await currentBranch(root), 'main');
+});
+
+async function revision(root: string, ref: string): Promise<string> {
+  return (await run(root, ['rev-parse', ref])).toString().trim();
+}
+
+async function currentBranch(root: string): Promise<string> {
+  return (await run(root, ['rev-parse', '--abbrev-ref', 'HEAD'])).toString().trim();
+}
+
+/** The paths a ref's own commit touched. */
+async function refPaths(root: string, ref: string): Promise<string[]> {
+  const output = await run(root, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', ref]);
+  return output.toString().split('\0').filter(Boolean).sort();
+}
+
 function mockRepository(root: string, working: GitChange[], index: GitChange[] = [], calls: string[] = []): GitRepository {
   const repository: GitRepository = {
     rootUri: uri(root),
@@ -245,6 +330,10 @@ async function repo(t: test.TestContext, files: Record<string, string>): Promise
   await run(root, ['init', '-b', 'main']);
   await run(root, ['config', 'user.name', 'Local Change Groups Test']);
   await run(root, ['config', 'user.email', 'test@example.invalid']);
+  // Otherwise a checkout rewrites line endings to match whatever the machine
+  // running the tests happens to prefer, and assertions on file contents start
+  // depending on the developer rather than on the code.
+  await run(root, ['config', 'core.autocrlf', 'false']);
   for (const [name, contents] of Object.entries(files)) await fs.writeFile(path.join(root, name), contents);
   await run(root, ['add', '.']);
   await run(root, ['commit', '-m', 'base']);

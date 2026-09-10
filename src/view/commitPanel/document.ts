@@ -114,6 +114,7 @@ export function commitPanelHtml(): string {
     </div>
     <button id="push" class="secondary">Commit &amp; Push</button>
   </div>
+  <div id="note" class="empty" hidden></div>
   <div id="empty" class="empty" hidden>Create a group to commit it on its own.</div>
 <script nonce="${nonce}">
 (function () {
@@ -122,6 +123,7 @@ export function commitPanelHtml(): string {
   const empty = document.getElementById('empty');
   const dot = document.getElementById('dot');
   const groupSelect = document.getElementById('group');
+  const note = document.getElementById('note');
   const message = document.getElementById('message');
   const commitButton = document.getElementById('commit');
   const stageButton = document.getElementById('stage');
@@ -151,11 +153,19 @@ export function commitPanelHtml(): string {
       ? 'Message (Ctrl+Enter to commit on "' + branch + '")'
       : 'Message (Ctrl+Enter to commit)';
     commitButton.textContent = '\\u2713 Commit ' + count + (count === 1 ? ' file' : ' files');
-    const enabled = count > 0;
+    const guarded = option.dataset.protected === 'true';
+    // Unstage stays available even when protected: it is the way to put a
+    // mistake right, not a way to make one.
+    const enabled = count > 0 && !guarded;
     commitButton.disabled = !enabled;
     stageButton.disabled = !enabled;
     unstageButton.disabled = !enabled;
     pushButton.disabled = !enabled;
+    unstageButton.disabled = count === 0;
+    note.hidden = !guarded;
+    note.textContent = guarded
+      ? 'Protected. It will not be staged, committed, or pushed.'
+      : '';
     message.value = drafts[groupSelect.value] || '';
   }
 
@@ -190,9 +200,10 @@ export function commitPanelHtml(): string {
     for (const group of groups) {
       const option = document.createElement('option');
       option.value = group.id;
-      option.textContent = group.name + ' (' + group.count + ')';
+      option.textContent = group.name + ' (' + group.count + ')' + (group.protected ? ' — protected' : '');
       option.dataset.color = group.color;
       option.dataset.count = String(group.count);
+      option.dataset.protected = group.protected ? 'true' : 'false';
       groupSelect.appendChild(option);
     }
     if (state.selectedGroupId) groupSelect.value = state.selectedGroupId;
