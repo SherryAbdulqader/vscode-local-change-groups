@@ -46,6 +46,16 @@ export class GroupStore {
     return this.state.assignments[fileKey];
   }
 
+  /**
+   * Every assignment, copied.
+   *
+   * Exporting a layout needs the whole map, including files that are not changed
+   * right now — an assignment outlives the edit that created it.
+   */
+  public getAssignments(): Record<string, string> {
+    return { ...this.state.assignments };
+  }
+
   /** The snapshot pinning a group, or undefined when it is live. */
   public getFrozen(groupId: string): FrozenSnapshot | undefined {
     if (!groupId.trim()) throw new Error('A group ID is required.');
@@ -161,6 +171,66 @@ export class GroupStore {
     });
   }
 
+  /**
+   * Files a batch the way moveAssignments does, and notes that a rule did it.
+   *
+   * The note is the whole difference. It is what lets you take a file back out
+   * of the group a rule chose without the rule putting it straight back.
+   */
+  public async autoAssign(targets: readonly AssignmentTarget[], groupId: string): Promise<void> {
+    if (!targets.length) throw new Error('At least one file is required.');
+    validateTargets(targets);
+    await this.mutate(next => {
+      const group = this.requireGroup(next, groupId);
+      if (next.frozen[groupId]) {
+        throw new Error(`"${group.name}" is frozen. Unfreeze it before adding files.`);
+      }
+      applyAssignments(next, targets, groupId);
+      next.autoAssigned = [...new Set([...next.autoAssigned, ...targets.map(target => target.fileKey)])];
+    });
+  }
+
+  /** Has a rule already filed this file? */
+  public wasAutoAssigned(fileKey: string): boolean {
+    return this.state.autoAssigned.includes(fileKey);
+  }
+
+  /**
+   * Drops notes for files that are no longer changed.
+   *
+   * Without this the list would grow for the life of the workspace. It also
+   * gives the nicer behaviour: commit a file, change it again next week, and the
+   * rules get another go at it.
+   *
+   * Writes nothing when there is nothing to drop, so calling it on every refresh
+   * is free.
+   */
+  public async pruneAutoAssigned(activeKeys: ReadonlySet<string>): Promise<void> {
+    const keep = this.state.autoAssigned.filter(key => activeKeys.has(key));
+    if (keep.length === this.state.autoAssigned.length) {
+      return;
+    }
+    await this.mutate(next => { next.autoAssigned = next.autoAssigned.filter(key => activeKeys.has(key)); });
+  }
+
+  /**
+   * Puts the groups in the given order.
+   *
+   * The stored array *is* the display order, so reordering is just rewriting it.
+   * Ids not mentioned keep their relative order and go on the end, which means a
+   * caller can hand over a partial order without losing anything.
+   */
+  public async reorderGroups(orderedIds: readonly string[]): Promise<void> {
+    await this.mutate(next => {
+      const wanted = orderedIds.filter(id => next.groups.some(group => group.id === id));
+      const seen = new Set(wanted);
+      next.groups = [
+        ...wanted.map(id => next.groups.find(group => group.id === id)!),
+        ...next.groups.filter(group => !seen.has(group.id))
+      ];
+    });
+  }
+
   /** Forgets one assignment. The file itself is untouched. */
   public async unassign(fileKey: string): Promise<void> {
     if (!fileKey.trim()) throw new Error('A file key is required.');
@@ -186,10 +256,10 @@ export class GroupStore {
     let rejectResult!: (reason?: unknown) => void;
     const result = new Promise<T>((resolve, reject) => { resolveResult = resolve; rejectResult = reject; });
     this.writeQueue = this.writeQueue.catch(() => undefined).then(async () => {
-      const next: PersistedState = { groups: this.state.groups.map(group => ({ ...group })), assignments: { ...this.state.assignments }, frozen: { ...this.state.frozen } };
+      const next: PersistedState = { groups: this.state.groups.map(group => ({ ...group })), assignments: { ...this.state.assignments }, frozen: { ...this.state.frozen }, autoAssigned: [...this.state.autoAssigned] };
       try {
         const value = change(next);
-        const snapshot: PersistedState = { groups: next.groups.map(group => ({ ...group })), assignments: { ...next.assignments }, frozen: { ...next.frozen } };
+        const snapshot: PersistedState = { groups: next.groups.map(group => ({ ...group })), assignments: { ...next.assignments }, frozen: { ...next.frozen }, autoAssigned: [...next.autoAssigned] };
         await this.memento.update(STORAGE_KEY, snapshot);
         this.state = snapshot;
         resolveResult(value);

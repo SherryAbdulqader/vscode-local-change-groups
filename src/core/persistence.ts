@@ -12,16 +12,24 @@ import { DEFAULT_GROUP_COLOR, isGroupColor, isGroupIcon, LocalGroup } from './gr
  * good luck spotting either of those from a bug report.
  */
 export interface PersistedState {
+  /** Order matters: this is the order the groups appear in the tree. */
   groups: LocalGroup[];
   assignments: Record<string, string>;
   /** Snapshots, keyed by group id. A group with no entry here is live. */
   frozen: Record<string, FrozenSnapshot>;
+  /**
+   * File keys auto-assign has already filed.
+   *
+   * Kept so that removing a file from the group a rule put it in actually
+   * sticks, instead of the rule filing it again on the next refresh.
+   */
+  autoAssigned: string[];
 }
 
 /** Reads stored state, or hands back an empty slate if it is unusable. */
 export function normalizePersistedState(value: unknown): PersistedState {
   if (!value || typeof value !== 'object') {
-    return { groups: [], assignments: {}, frozen: {} };
+    return { groups: [], assignments: {}, frozen: {}, autoAssigned: [] };
   }
 
   const candidate = value as Partial<PersistedState>;
@@ -46,7 +54,16 @@ export function normalizePersistedState(value: unknown): PersistedState {
       }
     }
   }
-  return { groups, assignments, frozen: normalizeFrozenSnapshots(candidate.frozen, validIds) };
+  const autoAssigned = Array.isArray(candidate.autoAssigned)
+    ? [...new Set(candidate.autoAssigned.filter(key => typeof key === 'string' && key.length > 0))]
+    : [];
+
+  return {
+    groups,
+    assignments,
+    frozen: normalizeFrozenSnapshots(candidate.frozen, validIds),
+    autoAssigned
+  };
 }
 
 /** The bare minimum for something to pass as a group. */

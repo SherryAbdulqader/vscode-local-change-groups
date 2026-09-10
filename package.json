@@ -82,6 +82,38 @@
         "category": "Local Change Groups"
       },
       {
+        "command": "localChangeGroups.applyAutoAssign",
+        "title": "Apply Auto-Assign Rules Now",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.moveGroupUp",
+        "title": "Move Group Up",
+        "icon": "$(arrow-up)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.moveGroupDown",
+        "title": "Move Group Down",
+        "icon": "$(arrow-down)",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.sortGroups",
+        "title": "Sort Groups by Name",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.exportLayout",
+        "title": "Export Group Layout...",
+        "category": "Local Change Groups"
+      },
+      {
+        "command": "localChangeGroups.importLayout",
+        "title": "Import Group Layout...",
+        "category": "Local Change Groups"
+      },
+      {
         "command": "localChangeGroups.removeFromGroup",
         "title": "Remove Files from Group",
         "icon": "$(close)",
@@ -281,6 +313,14 @@
           ],
           "default": "status",
           "description": "Chooses whether file rows are tinted by Git status or by their group color."
+        },
+        "localChangeGroups.autoAssign": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "markdownDescription": "Files new changes into a group by path, so you stop filing them by hand. Each key is a glob, each value is a group name; the group is created if it does not exist yet.\n\nThe **first** matching rule wins, in the order written here. A pattern with no `/` matches the file name anywhere (`*.md`); a pattern with a `/` matches the whole path from the repository root (`src/api/**`).\n\nExample:\n\n    {\n      \"test/**\": \"Tests\",\n      \"**/*.test.ts\": \"Tests\",\n      \"docs/**\": \"Docs\",\n      \"**/*.{css,scss}\": \"Styling\"\n    }\n\nRules never overrule you: only files that are not already in a group get picked up, and a file you take back out stays out."
         }
       }
     },
@@ -326,6 +366,26 @@
           "command": "localChangeGroups.unfreezeAllGroups",
           "when": "view == localChangeGroups.view && localChangeGroups.hasFrozen",
           "group": "freeze@1"
+        },
+        {
+          "command": "localChangeGroups.applyAutoAssign",
+          "when": "view == localChangeGroups.view",
+          "group": "layout@1"
+        },
+        {
+          "command": "localChangeGroups.sortGroups",
+          "when": "view == localChangeGroups.view",
+          "group": "layout@2"
+        },
+        {
+          "command": "localChangeGroups.exportLayout",
+          "when": "view == localChangeGroups.view",
+          "group": "layout@3"
+        },
+        {
+          "command": "localChangeGroups.importLayout",
+          "when": "view == localChangeGroups.view",
+          "group": "layout@4"
         }
       ],
       "view/item/context": [
@@ -383,6 +443,16 @@
           "command": "localChangeGroups.assignAllUngrouped",
           "when": "view == localChangeGroups.view && viewItem == localChangeGroups.ungrouped",
           "group": "group@1"
+        },
+        {
+          "command": "localChangeGroups.moveGroupUp",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
+          "group": "2_order@1"
+        },
+        {
+          "command": "localChangeGroups.moveGroupDown",
+          "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.group/",
+          "group": "2_order@2"
         },
         {
           "command": "localChangeGroups.assignToGroup",

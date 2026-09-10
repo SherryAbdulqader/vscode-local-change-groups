@@ -10,7 +10,8 @@ test('normalizePersistedState removes dangling assignments', () => {
   }), {
     groups: [{ id: 'one', name: 'Local', color: 'blue' }],
     assignments: { valid: 'one' },
-    frozen: {}
+    frozen: {},
+    autoAssigned: []
   });
 });
 

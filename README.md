@@ -1,92 +1,247 @@
 # Local Change Groups
 
-Local Change Groups adds a private tree in its own Activity Bar container. It organizes changed files into named, colored groups such as **Local Only**, **Ready for GitHub**, or **Tests**, while keeping an **Ungrouped** section.
+Sort your changed files into named, colored groups. Then commit one group at a time, and leave the rest of your work alone.
 
-Prefer it beside the built-in **Changes** list? Drag the view's title onto the Source Control icon — VS Code remembers view placement per workspace, so it stays there.
+It lives in its own icon in the Activity Bar. Nothing it does is written into your repository.
+
+---
+
+## The problem it solves
+
+You sat down to fix one bug. Four hours later you have changed eleven files: the actual fix, two experiments, a typo you spotted, and some debug logging you definitely do not want to push.
+
+Git shows you one flat list. This shows you your list.
+
+```
+LOCAL CHANGE GROUPS
+├─ Frozen
+│  └─ 🔒 Login fix               3   ← reviewed and parked, out of the way
+├─ Staged Changes                2
+│  └─ 🚀 Ready to ship           2
+└─ Changes                       6
+   ├─ 🧪 Tests                   2   ← auto-filed by a rule
+   ├─ 🔒 Local only              3   ← debug logging, never leaves your machine
+   └─ Ungrouped                  1
+```
+
+---
+
+## Getting started
+
+1. Click the **Local Change Groups** icon in the Activity Bar.
+2. Press **+** to make a group. Give it a name and a color.
+3. Drag files onto it. Or right-click a file and choose **Assign or Move Files**.
+4. Right-click the group and choose **Commit Group**.
+
+Only that group gets committed. Everything else stays exactly as it was.
+
+---
 
 ## Features
 
-- Create, rename, recolor, and delete private groups.
-- Drag files onto a group to assign them, onto **Ungrouped** to remove them, or onto a file row to join that row's group. Files dragged in from the Explorer or the built-in **Changes** list work too.
-- Select many files with `Ctrl`/`Shift` and assign, move, or remove them in one action, or turn the selection straight into a new group.
-- File everything at once with **Assign All Ungrouped to Group** on the **Ungrouped** row: one click, pick a group, and the whole bucket moves. The picker offers a new group inline, so an empty workspace is not a dead end. Frozen groups are left out, since they cannot take new files until unfrozen.
-- Read file rows the way you read the built-in **Changes** list: file-theme icon, file name, dim folder path, and a single-letter status badge (`M`, `A`, `D`, `R`, `U`, `C`) in the matching Git color.
-- Assign, move, and remove changed files through tree menus or the Command Palette.
-- Give each group its own icon — a beaker for Tests, a lock for Local Only, a rocket for what is ready to ship. Pick from sixteen, or type any VS Code codicon id. Emoji work too: put one straight in the group name.
-- Choose from eight theme-aware colors, which tint whichever icon a group uses. Set `localChangeGroups.fileColors` to `group` to tint file rows by their group instead of by Git status.
-- Commit from a Source Control style box at the top of the view: pick a group, type a message, press `Ctrl+Enter`. Drafts are kept per group.
-- See a count of changed files on the Activity Bar icon.
-- Split into **Staged Changes** and **Changes** the moment anything is staged, with your groups nested under each; the split disappears again when the index is clean.
-- Unstage a whole group or any staged file, without touching the working tree.
-- Freeze a group to pin what it shows, so later edits to the same files stay out of a change you have already reviewed.
-- Discard a whole group or any selection of files, behind a modal that states reverts and permanent deletions separately.
-- Stage one group, commit one group, or commit and push one group with safety checks.
-- Open tracked changes in VS Code's Git diff and untracked files in the editor.
-- Refresh automatically from VS Code's built-in Git extension.
-- Keep independent assignments for files in multiple open repositories.
+### Groups
 
-## Freeze a group
+| What | How |
+| --- | --- |
+| Make a group | **+** in the view title |
+| Rename, recolor, change icon | Right-click the group |
+| Delete a group | Right-click the group. Its files go back to Ungrouped; nothing on disk changes |
+| Reorder groups | Drag a group onto another one, or right-click → **Move Group Up** / **Move Group Down** |
+| Sort groups A–Z | View title menu → **Sort Groups by Name** |
 
-Freezing is a snapshot layer between your working tree and the index.
+Pick from **eight theme-aware colors** and **sixteen icons** — a beaker for Tests, a lock for Local Only, a rocket for what is ready to ship. Or type any VS Code codicon id. Emoji work too: just put one in the group name.
 
-Finish a piece of work, drop those files into a group, name it **Problem 1**, and freeze it. From then on the group shows you *that* change and nothing else. Keep editing the same files for the next problem — click a frozen row and you still see exactly the diff you reviewed, because it is served from the snapshot rather than from Git.
+### Filing files
 
-A frozen change gets out of your way. Its files leave **Changes** and **Ungrouped** and live in their own **Frozen** section, so the list you are working through only holds what you are actually working on. It behaves like a stash, except nothing moves on disk and you can still open any frozen row and read the diff.
+| What | How |
+| --- | --- |
+| One file, or a selection | Drag it, or right-click → **Assign or Move Files** |
+| Everything at once | Click the **→** on the **Ungrouped** row |
+| Straight into a new group | Select some files → right-click → **New Group from Selection** |
+| Take a file back out | Right-click → **Remove Files from Group**, or drag it onto Ungrouped |
 
-Keep editing a frozen file and the new part comes back into **Changes** as an ordinary ungrouped change, marked *since freeze* and diffed against the frozen copy. So the reviewed change stays parked above and only the new work shows up below. Two other things always stay visible, on purpose: anything you have staged, and anything in conflict — that is what your next commit contains, and hiding it would be a good way to commit something you did not mean to.
+Select many files with `Ctrl` or `Shift` and every one of these acts on the whole selection. You can also drag files in from the Explorer or from the built-in **Changes** list.
 
-A freeze does three things:
+### Auto-assign by path
 
-- **Gets the change out of the way.** A file that still matches the snapshot is not listed among your live changes.
-- **Pins what the group displays.** Later edits never leak into a diff you already looked at.
-- **Pins what can join it.** A frozen group stops accepting new files, which is the point of parking it.
+Tell it once where things go, and stop filing them by hand. Put this in your settings:
 
-It does **not** stop you working. You can still edit those files, and you can still stage, commit, or push the group — Git acts on the current content, as always.
+```json
+"localChangeGroups.autoAssign": {
+  "test/**": "Tests",
+  "**/*.test.ts": "Tests",
+  "docs/**": "Docs",
+  "**/*.{css,scss}": "Styling"
+}
+```
 
-Coming back to a frozen group later:
+Now every test file you touch lands in **Tests** on its own. Groups named in the rules are created for you if they do not exist yet.
 
-- **Unfreeze Group** releases it, and names every file that changed while it was parked. Nothing drifted? It says so.
-- **Update Freeze to Current** re-captures the snapshot in place, for when one more fix belongs with the change you already froze.
-- **Compare Frozen with Current** on any frozen row diffs the snapshot against the live file.
-- **Unfreeze All Groups** appears in the view title menu only while something is frozen.
+**How patterns match:**
 
-Snapshot contents are stored as content-addressed blobs in the extension's own storage folder, never inside `.git`. Binary files are skipped, since there is nothing to show in a diff.
+| Pattern | Means | Matches |
+| --- | --- | --- |
+| `*.md` | no slash → the **file name**, anywhere | `readme.md`, `docs/deep/readme.md` |
+| `docs/*.md` | has a slash → the **whole path** from the repo root | `docs/readme.md` but not `other/readme.md` |
+| `test/**` | `**` is any number of folders | `test/a.ts`, `test/deep/b.ts` |
+| `**/*.test.ts` | `**/` also matches **no** folder at all | `a.test.ts` and `src/a.test.ts` |
+| `src/*.ts` | one `*` stays inside one folder | `src/a.ts` but not `src/deep/a.ts` |
+| `**/*.{css,scss}` | `{a,b}` is either one | `a.css`, `src/a.scss` |
 
-## Safe group Git actions
+The **first** matching rule wins, reading top to bottom in your settings file. No specificity contest to work out in your head — if you want `src/api/**` to beat `src/**`, put it above it.
 
-Git actions use the public `vscode.git` API and preserve working-tree changes outside the selected group. Before staging, the extension requires:
+**Two things it will never do:**
 
-- a named, non-empty group scoped to one repository;
-- no conflicts, merge, or rebase in progress;
-- no partially staged files inside the selected group; unrelated staged hunks are preserved;
-- every path to resolve inside that repository.
+- **Overrule you.** Only files that are not in a group get picked up.
+- **Fight you.** Take a file back out of the group a rule chose, and it stays out. It is not filed again on the next save.
 
-Renames stage both paths and keep their group through the old-path assignment. The extension snapshots exact unrelated index records and verifies that they remain unchanged. If a pre-commit step fails, it unstages only group paths newly staged by this action, and only while the captured branch and HEAD are unchanged.
+Changed your rules and want them applied to what is already on screen? View title menu → **Apply Auto-Assign Rules Now**.
 
-**Commit Group** uses Git's path-scoped `commit --only` behavior, so staged files and staged hunks outside the group stay in the index without being unstaged or reconstructed. **Commit & Push Group** additionally requires a configured upstream and a branch known to be neither ahead nor behind. It revalidates after confirmation, requires exactly one direct child commit containing exactly the group paths, and pushes an explicit local-to-upstream refspec. It never force-pushes or sets an upstream.
+### Freeze a group
 
-If a push fails, the commit remains local. The extension reports this clearly so it can be pushed after the remote problem is resolved.
+Freezing parks a change. It behaves like a stash, except nothing moves on disk and you can still read it.
+
+Finish a piece of work, drop those files in a group, and freeze it. The files leave **Changes** and **Ungrouped** and sit in their own **Frozen** section. Click any frozen row and you see exactly the diff you reviewed, served from the snapshot rather than from Git.
+
+**Keep editing a frozen file** and the new part comes back into **Changes**, marked *since freeze* and diffed against the frozen copy. The reviewed change stays parked above; only the new work shows up below.
+
+Two things always stay visible, on purpose:
+
+- Files you have **staged**
+- Files in **conflict**
+
+That is what your next commit contains. Hiding it would be a good way to commit something you did not mean to.
+
+| Command | What it does |
+| --- | --- |
+| **Freeze Group** | Captures the group as it is now |
+| **Unfreeze Group** | Releases it, and names every file that changed while it was parked |
+| **Update Freeze to Current** | Re-captures in place, for when one more fix belongs with it |
+| **Compare Frozen with Current** | Diffs the snapshot against the live file |
+| **Commit Group Since Freeze** | Commits only what changed after the freeze |
+| **Unfreeze All Groups** | Appears in the view title menu only while something is frozen |
+
+Snapshots are stored as content-addressed blobs in the extension's own storage folder, never inside `.git`. Binary files are skipped, since there is nothing to show in a diff.
+
+### Share a layout
+
+Grouping is private to your machine, which is the right default. But sometimes a layout is worth sharing — a review split, or a house convention for where things go.
+
+| Command | What it does |
+| --- | --- |
+| **Export Group Layout...** | Writes your groups and their files to a JSON file |
+| **Import Group Layout...** | Reads one back in |
+
+The file is small, readable, and safe to commit:
+
+```json
+{
+  "version": 1,
+  "groups": [
+    { "name": "Tests", "color": "green", "icon": "beaker" }
+  ],
+  "files": {
+    "test/login.test.ts": "Tests"
+  }
+}
+```
+
+It records **repository-relative paths** and refers to groups **by name**, because absolute paths and local group ids mean nothing on anyone else's machine.
+
+On import:
+
+- Groups you already have are **reused by name**, keeping their own color and icon.
+- Groups you do not have are **created**.
+- Files listed in the file **move** into the group it names.
+- Anything not listed **keeps** the group it is in now.
+- **No files on disk are touched.** Ever.
+
+Frozen snapshots are deliberately not exported. They are megabytes of your file contents, and they are about your afternoon rather than about how your team organises work.
+
+### Commit one group
+
+| Command | What it does |
+| --- | --- |
+| **Stage Group** | Stages only that group |
+| **Unstage Group** | Takes it back out of the index, working tree untouched |
+| **Commit Group** | Commits only that group |
+| **Commit & Push Group** | Commits and pushes it, behind a confirmation naming the group and branch |
+| **Discard All Changes in Group** | Throws the group's working-tree changes away, behind a modal |
+
+There is also a commit box at the top of the view, like the one in Source Control: pick a group, type a message, press `Ctrl+Enter`. Unsent messages are kept per group.
+
+### Reading the tree
+
+- File rows look like the built-in **Changes** list: file icon, name, dim folder path, and a status letter (`M`, `A`, `D`, `R`, `U`, `C`) in the usual Git color.
+- The Activity Bar icon carries a count of changed files.
+- **Staged Changes** and **Changes** split apart the moment anything is staged, with your groups under each. The split disappears again when the index is clean.
+- Every open repository keeps its own assignments.
+
+---
+
+## Settings
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `localChangeGroups.autoAssign` | `{}` | Globs to group names. See [Auto-assign by path](#auto-assign-by-path) |
+| `localChangeGroups.fileColors` | `status` | `status` colors file rows by Git status; `group` colors them by their group |
+
+---
+
+## How the Git actions stay safe
+
+Every Git action goes through the public `vscode.git` API and leaves everything outside the chosen group alone. Before staging, it insists on:
+
+- a named, non-empty group in **one** repository;
+- no conflict, merge, or rebase in progress;
+- no partially staged files **inside** the group — unrelated staged hunks are preserved;
+- every path resolving inside that repository.
+
+A few specifics worth knowing:
+
+- **Renames** stage both paths and keep their group through the old path.
+- **Unrelated staged work** is snapshotted exactly and checked afterwards to confirm it did not move.
+- **If a pre-commit hook fails**, only the group paths this action newly staged are unstaged — and only while the branch and HEAD are still where they were.
+- **Commit Group** uses Git's own `commit --only`, so staged files and staged hunks outside the group stay in the index untouched, rather than being unstaged and rebuilt.
+- **Commit & Push Group** needs an upstream that is neither ahead nor behind. It re-checks after you confirm, requires exactly one child commit containing exactly the group's paths, and pushes an explicit local-to-upstream refspec. It never force-pushes and never sets an upstream.
+- **If a push fails**, the commit is still there locally, and the message says so.
+
+---
 
 ## Privacy
 
-Group names, colors, and assignments are stored only in VS Code `workspaceState`. The extension does not add metadata files to the repository or change `.gitignore` or `.git/info`. It has no telemetry, shell execution, runtime dependencies, or direct network client.
+**Nothing goes into your repository.** Group names, colors, icons, order, and assignments live in VS Code's `workspaceState`. No metadata files, no changes to `.gitignore` or `.git/info`.
 
-The commit panel is the extension's only webview. Its Content Security Policy is `default-src 'none'` with a per-render nonce for its own inline style and script, and it declares no `localResourceRoots`, so it cannot load anything from disk or the network. It exchanges only group names, colors, file counts, the current branch name, and the message you type; every action it requests is re-validated in the extension host before any Git command runs. Guarded group actions run only the Git executable path supplied by VS Code, using argument arrays and no shell; inherited `GIT_*` environment variables are removed. Network access occurs only when the user explicitly requests a push, which is performed by VS Code's built-in Git extension.
+- No telemetry.
+- No shell execution — Git runs with argument arrays, and inherited `GIT_*` variables are stripped.
+- No runtime dependencies.
+- No network client. The only network access is a push you explicitly asked for, performed by VS Code's own Git extension.
 
-It is disabled in untrusted and virtual workspaces.
+The commit box is the extension's only webview. Its Content Security Policy is `default-src 'none'` with a per-render nonce, and it declares no `localResourceRoots`, so it can load nothing from disk or the network. It exchanges only group names, colors, file counts, the branch name, and the message you type — and every action it asks for is re-validated in the extension host before any Git command runs.
+
+The extension is disabled in untrusted and virtual workspaces.
+
+---
 
 ## Limitations
 
-- This is a separate view; VS Code does not let extensions rearrange or color rows in the built-in **Changes** list.
-- VS Code does not expose arbitrary tree-row background highlighting. Colors apply to the group dot and, when `localChangeGroups.fileColors` is `group`, to file rows.
-- A group is metadata, not a permanent Git staging area. Every Git action re-checks live repository state.
-- Another process or Git hook can still edit repository state in the tiny interval between checks. Post-commit verification blocks push when the result differs and asks you to inspect it.
-- Partially staged group files are blocked because their hunks cannot be safely reconstructed. Unrelated partial staging is allowed and preserved byte-for-byte in the index.
-- **Commit & Push Group** supports only an already-configured upstream that is fully synchronized. It does not create branches, pull, resolve divergence, set upstreams, or force-push.
-- Assignments are local to the current VS Code workspace and are not shared with teammates.
-- Renames retain their group when the Git API reports the old path; unrelated moves may need reassignment.
-- VS Code gives a tree row one click target, so the group color dot cannot be clicked on its own. Recolor from the palette button on the row or the context menu.
-- Discard acts on working-tree changes only. A file staged with no further edit is left alone rather than being unstaged.
+**Things VS Code does not let an extension do:**
+
+- Rearrange or color rows in the built-in **Changes** list. That is why this is a separate view.
+- Set arbitrary row backgrounds. Color applies to the group icon and, with `fileColors` set to `group`, to file rows.
+- Give a row two click targets, so the group's color dot cannot be clicked on its own. Recolor from the palette button on the row instead.
+
+**Things about the design:**
+
+- A group is metadata, not a permanent staging area. Every Git action re-checks live repository state.
+- Another process or a Git hook can still change the repository in the moment between checks. Post-commit verification blocks the push when the result differs and asks you to look.
+- Partially staged files inside a group are refused, because their hunks cannot be safely rebuilt. Unrelated partial staging is fine and is preserved byte for byte.
+- **Commit & Push Group** works only with an upstream that is already set up and in sync. It will not create branches, pull, resolve divergence, set upstreams, or force-push.
+- **Discard** touches working-tree changes only. A file staged with no further edit is left alone rather than being unstaged.
+- Renames keep their group when the Git API reports the old path. Unrelated moves may need refiling.
+- A freeze belongs to the repository it was taken in. With several open, the same group is an ordinary live group in the others.
+
+---
 
 ## Development
 
@@ -95,41 +250,29 @@ npm install
 npm test
 ```
 
-Press `F5` in VS Code after compiling to open an Extension Development Host.
+Press `F5` in VS Code to open an Extension Development Host.
 
-The source is layered — see [ARCHITECTURE.md](ARCHITECTURE.md). The short version:
-`core/` and `data/` never import `vscode`, which is what lets the whole test suite
-run under plain `node --test` with no VS Code host.
+The source is layered — see [ARCHITECTURE.md](ARCHITECTURE.md). The short version: `core/` and `data/` never import `vscode`, which is what lets the whole test suite run under plain `node --test` with no editor.
 
 ## Packaging and local installation
 
-The build is reproducible from a clean checkout with Microsoft's official
-[`@vscode/vsce`](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) tool,
-which is pinned as a dev dependency:
+Built with Microsoft's official [`@vscode/vsce`](https://code.visualstudio.com/api/working-with-extensions/publishing-extension), pinned as a dev dependency so it is reproducible from a clean checkout:
 
 ```text
 npm install
-npm test                     # 63 tests
+npm test                     # 128 tests
 npm run package              # -> dist/local-change-groups-<version>.vsix
 npm run install-extension    # package, then install into VS Code
+npm run uninstall-extension  # remove it again
 ```
 
-`npm run install-extension` runs `code --install-extension ... --force`, so it also
-upgrades an already-installed copy. Reload the window afterwards, then click the
-**Local Change Groups** icon in the Activity Bar. To remove it:
-
-```text
-npm run uninstall-extension
-```
+`install-extension` passes `--force`, so it upgrades a copy you already have. **Reload the window afterwards**, then click the **Local Change Groups** icon in the Activity Bar.
 
 ### What ships in the .vsix
 
-`vscode:prepublish` compiles TypeScript first, and `.vscodeignore` restricts the
-archive to runtime files only — the compiled `out/src/**` output, `resources/`, `package.json`,
-`README.md`, `CHANGELOG.md`, and `LICENSE`. Sources, tests, compiled tests, source
-maps, `tsconfig.json`, `node_modules/`, `package-lock.json`, and repository metadata
-are all excluded. The extension declares no runtime dependencies, so nothing from
-`node_modules/` is bundled. Verify a build with:
+`vscode:prepublish` compiles first, and `.vscodeignore` cuts the archive down to runtime files only: the compiled `out/src/**`, `resources/`, `package.json`, `README.md`, `CHANGELOG.md`, and `LICENSE`.
+
+Left out: sources, tests, compiled tests, source maps, `tsconfig.json`, `node_modules/`, `package-lock.json`, build scripts, and repository metadata. The extension declares no runtime dependencies, so nothing is bundled from `node_modules/`. Check any build with:
 
 ```text
 npx vsce ls
@@ -137,8 +280,4 @@ npx vsce ls
 
 ### Publishing to the Marketplace
 
-Publishing is a separate step and is intentionally not automated here: it requires an
-Azure DevOps publisher account for `sherryabdulqader` and a Personal Access Token with
-**Marketplace → Manage** scope. With that token available, publish with
-`npx vsce publish` (or upload `dist/local-change-groups-<version>.vsix` through the
-Marketplace publisher portal). Never commit the token.
+Deliberately not automated. It needs an Azure DevOps publisher account for `sherryabdulqader` and a Personal Access Token with **Marketplace → Manage** scope. With that in place, `npx vsce publish` — or upload the `.vsix` through the publisher portal. Never commit the token.

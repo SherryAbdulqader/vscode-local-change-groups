@@ -247,3 +247,101 @@ test('freezing rejects an empty snapshot and an unknown group', async () => {
   await assert.rejects(store.freezeGroup(group.id, { ...frozenSnapshot(), files: [] }), /at least one file/i);
   await assert.rejects(store.freezeGroup('missing', frozenSnapshot()), /Group not found/);
 });
+
+test('auto-assign files a batch and remembers that it did', async () => {
+  const memory = new MemoryMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Tests');
+
+  await store.autoAssign([target('test/a.ts')], group.id);
+
+  assert.equal(store.getAssignment('test/a.ts'), group.id);
+  assert.equal(store.wasAutoAssigned('test/a.ts'), true);
+  assert.equal(new GroupStore(memory).wasAutoAssigned('test/a.ts'), true);
+});
+
+test('a file taken back out of its group is not filed again', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Tests');
+  await store.autoAssign([target('test/a.ts')], group.id);
+
+  await store.unassignAll(['test/a.ts']);
+
+  // The assignment is gone but the note stays, which is what stops the rule
+  // from putting the file straight back on the next refresh.
+  assert.equal(store.getAssignment('test/a.ts'), undefined);
+  assert.equal(store.wasAutoAssigned('test/a.ts'), true);
+});
+
+test('auto-assign refuses a frozen group like any other write', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Tests');
+  await store.freezeGroup(group.id, frozenSnapshot());
+
+  await assert.rejects(store.autoAssign([target('test/a.ts')], group.id), /frozen/i);
+});
+
+test('notes are dropped once a file stops being changed', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const group = await store.createGroup('Tests');
+  await store.autoAssign([target('kept.ts'), target('committed.ts')], group.id);
+
+  await store.pruneAutoAssigned(new Set(['kept.ts']));
+
+  assert.equal(store.wasAutoAssigned('kept.ts'), true);
+  // Committed, so the rules get another go at it if it changes again later.
+  assert.equal(store.wasAutoAssigned('committed.ts'), false);
+});
+
+test('pruning writes nothing when there is nothing to drop', async () => {
+  const memory = new CountingMemento();
+  const store = new GroupStore(memory);
+  const group = await store.createGroup('Tests');
+  await store.autoAssign([target('a.ts')], group.id);
+  const before = memory.calls;
+
+  await store.pruneAutoAssigned(new Set(['a.ts']));
+
+  // Called on every refresh, so it has to be free when nothing has changed.
+  assert.equal(memory.calls, before);
+});
+
+test('reordering groups changes the order they come back in', async () => {
+  const memory = new MemoryMemento();
+  const store = new GroupStore(memory);
+  const first = await store.createGroup('First');
+  const second = await store.createGroup('Second');
+
+  await store.reorderGroups([second.id, first.id]);
+
+  assert.deepEqual(store.getGroups().map(group => group.name), ['Second', 'First']);
+  assert.deepEqual(new GroupStore(memory).getGroups().map(group => group.name), ['Second', 'First']);
+});
+
+test('a partial order keeps the groups it did not mention', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  const first = await store.createGroup('First');
+  await store.createGroup('Second');
+  const third = await store.createGroup('Third');
+
+  await store.reorderGroups([third.id, first.id]);
+
+  // Anything left out goes on the end, keeping its own relative order, so a
+  // caller can hand over a partial order without losing a group.
+  assert.deepEqual(store.getGroups().map(group => group.name), ['Third', 'First', 'Second']);
+});
+
+test('an order full of unknown ids leaves the groups alone', async () => {
+  const store = new GroupStore(new MemoryMemento());
+  await store.createGroup('First');
+  await store.createGroup('Second');
+
+  await store.reorderGroups(['nope', 'also-nope']);
+
+  assert.deepEqual(store.getGroups().map(group => group.name), ['First', 'Second']);
+});
+
+/** A file key with no rename aliases, which is all these tests need. */
+function target(fileKey: string) {
+  return { fileKey, assignmentKeys: [fileKey] };
+}

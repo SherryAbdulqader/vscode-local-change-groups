@@ -40,11 +40,40 @@ export function assignmentKey(
     throw new Error('Repository and relative paths are required.');
   }
 
-  const pathApi = platform === 'win32' ? nodePath.win32 : nodePath.posix;
-  const resolvedRoot = pathApi.resolve(repositoryRoot).replace(/\\/g, '/');
-  const normalizedRoot = platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
   const normalizedPath = relativePath.replace(/\\/g, '/').replace(/^\.\//, '');
-  return `${normalizedRoot}::${normalizedPath}`;
+  return assignmentKeyPrefix(repositoryRoot, platform) + normalizedPath;
+}
+
+/**
+ * The part of a key that names the repository, trailing separator included.
+ *
+ * Having this on its own is what makes a key reversible: given the repository,
+ * strip the prefix and what is left is the path you started with. Exporting a
+ * layout needs exactly that.
+ */
+export function assignmentKeyPrefix(
+  repositoryRoot: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (!repositoryRoot.trim()) {
+    throw new Error('A repository path is required.');
+  }
+  const pathApi = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const resolved = pathApi.resolve(repositoryRoot).replace(/\\/g, '/');
+  return `${platform === 'win32' ? resolved.toLowerCase() : resolved}::`;
+}
+
+/**
+ * The repository-relative path inside a key, if the key belongs to this
+ * repository. Keys from another repository come back as undefined.
+ */
+export function relativePathFromKey(
+  key: string,
+  repositoryRoot: string,
+  platform: NodeJS.Platform = process.platform
+): string | undefined {
+  const prefix = assignmentKeyPrefix(repositoryRoot, platform);
+  return key.startsWith(prefix) ? key.slice(prefix.length) || undefined : undefined;
 }
 
 /** Squashes a path so two spellings of the same file compare equal on Windows. */

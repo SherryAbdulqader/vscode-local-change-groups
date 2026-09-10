@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { registerFreezeCommands } from './commands/freezeCommands';
 import { registerGitCommands } from './commands/gitCommands';
 import { registerGroupCommands } from './commands/groupCommands';
+import { registerLayoutCommands } from './commands/layoutCommands';
 import { CommandContext, runCommand } from './commands/context';
 import { runPanelAction } from './commands/panelActions';
 import { selectedGroupId } from './commands/selection';
@@ -12,6 +13,7 @@ import { FrozenDrift } from './data/frozenDrift';
 import { GroupStore } from './data/groupStore';
 import { SnapshotFiles } from './data/snapshotFiles';
 import { getGitApi, GitApi } from './git/api';
+import { AutoAssigner } from './services/autoAssign';
 import { FreezeContext } from './services/freezeActions';
 import { ChangeGroupsTreeProvider } from './view/changeTree';
 import { FROZEN_SCHEME, FrozenContentProvider } from './view/frozenContent';
@@ -61,6 +63,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
 
     const commands: CommandContext = { store, provider, view, gitApi, snapshots, output };
+    // Files strays into the group your rules name. Does nothing at all until you
+    // write some rules.
+    const autoAssigner = new AutoAssigner({ store, provider, output });
     const commitPanel = buildCommitPanel(commands);
     const freezeContext = (): FreezeContext => {
       if (!gitApi) throw new Error('The built-in Git extension is unavailable.');
@@ -77,7 +82,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.registerWebviewViewProvider(CommitPanelProvider.viewId, commitPanel),
       // One tree change feeds everything downstream of it — the panel's counts
       // and the badge on the Activity Bar icon.
+      // Editing the rules should take effect now, not on the next Git event.
+      vscode.workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration('localChangeGroups.autoAssign')) {
+          autoAssigner.schedule();
+        }
+      }),
       provider.onDidChangeTreeData(() => {
+        autoAssigner.schedule();
         commitPanel.refresh();
         view.badge = changeBadge(provider);
         void vscode.commands.executeCommand(
@@ -90,7 +102,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.workspace.registerTextDocumentContentProvider(FROZEN_SCHEME, new FrozenContentProvider(snapshots)),
       ...registerGroupCommands(commands),
       ...registerGitCommands(commands),
-      ...registerFreezeCommands(commands, freezeContext)
+      ...registerFreezeCommands(commands, freezeContext),
+      ...registerLayoutCommands(commands)
     );
 
     view.badge = changeBadge(provider);
@@ -107,6 +120,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // is the moment we know exactly which blobs are still wanted. Clears anything
     // left behind by an earlier session. Not awaited: it is housekeeping.
     void snapshots.prune(referencedHashes(store.getAllFrozen()));
+    // One pass on open, so rules apply to whatever is already changed.
+    autoAssigner.schedule();
     output.appendLine('Local Change Groups activated with guarded group Git actions.');
   } catch (error) {
     output.appendLine(`Activation failed: ${errorMessage(error)}`);

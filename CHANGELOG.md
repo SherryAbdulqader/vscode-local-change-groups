@@ -5,6 +5,34 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Auto-assign by path.** A new `localChangeGroups.autoAssign` setting maps globs
+  to group names, so new changes land in the right group without you filing them.
+  Groups named in a rule are created if they do not exist. Patterns are the VS
+  Code ones: `**`, `*`, `?`, and `{a,b}`; a pattern with no slash matches the file
+  name anywhere, one with a slash matches the whole path from the repository root.
+  The first matching rule wins, in the order written.
+
+  Rules never overrule you. Only files that are not already in a group get picked
+  up, and a file you take back out of the group a rule chose stays out — the
+  alternative is a Remove button that looks broken. **Apply Auto-Assign Rules
+  Now**, in the view title menu, re-runs the rules on purpose after you edit them.
+- **Export and import a group layout.** Grouping lives in workspace storage, which
+  is private to your machine and so cannot be shared. **Export Group Layout** and
+  **Import Group Layout** write and read a small, readable JSON file that records
+  repository-relative paths and refers to groups by name, both of which survive the
+  trip to someone else. Import reuses groups you already have, creates the ones you
+  do not, and leaves files it does not mention where they are. Frozen snapshots are
+  not exported: they are megabytes of file contents and are nobody else's business.
+- **Reorder groups.** They used to render in creation order with no way to change
+  it. Drag a group onto another to drop it above, drag onto **Ungrouped** to send
+  it to the end, or use **Move Group Up** / **Move Group Down** from the context
+  menu. **Sort Groups by Name** is in the view title menu.
+
+### Changed
+- The README is rewritten around what the extension does rather than how it is
+  built, with a table per feature and the pattern-matching rules spelled out.
+
 ### Fixed
 - With more than one repository open, a frozen group appeared under every one of
   them, and its file rows pointed at whichever repository the row happened to

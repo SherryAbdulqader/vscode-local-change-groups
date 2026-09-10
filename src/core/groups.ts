@@ -82,3 +82,45 @@ export function isGroupColor(value: unknown): value is GroupColor {
 export function isGroupIcon(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 40 && ICON_PATTERN.test(value);
 }
+
+/**
+ * The order with one group shifted a step up or down.
+ *
+ * Nudging the top item up, or the bottom one down, gives the order back
+ * unchanged. That is what makes the menu entries safe to leave enabled: the
+ * ends simply do nothing rather than wrapping around, which nobody expects a
+ * list to do.
+ */
+export function moveInOrder(ids: readonly string[], id: string, step: number): string[] {
+  const from = ids.indexOf(id);
+  const to = from + step;
+  if (from < 0 || to < 0 || to >= ids.length) {
+    return [...ids];
+  }
+  const reordered = [...ids];
+  reordered.splice(from, 1);
+  reordered.splice(to, 0, id);
+  return reordered;
+}
+
+/**
+ * The order with some groups lifted out and dropped back in above another one.
+ *
+ * This is what a drag lands on. The moving ids are removed first and the
+ * insertion point is found afterwards, so dragging something downwards past
+ * its own old position still ends up where you dropped it.
+ *
+ * Dropping a group onto itself changes nothing.
+ */
+export function moveBefore(ids: readonly string[], moving: readonly string[], beforeId: string): string[] {
+  const lifted = moving.filter(id => ids.includes(id) && id !== beforeId);
+  if (lifted.length === 0) {
+    return [...ids];
+  }
+  const rest = ids.filter(id => !lifted.includes(id));
+  const at = rest.indexOf(beforeId);
+  if (at < 0) {
+    return [...ids];
+  }
+  return [...rest.slice(0, at), ...lifted, ...rest.slice(at)];
+}

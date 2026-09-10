@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { moveBefore } from '../core/groups';
 import { comparablePath } from '../core/repositoryPaths';
 import { parseUriListEntries } from '../core/text';
 import { GroupStore } from '../data/groupStore';
@@ -12,6 +13,17 @@ interface DraggedChange {
   fileKey: string;
   assignmentKeys: string[];
 }
+
+/**
+ * What is in flight.
+ *
+ * Dragging files means "put these in that group". Dragging group rows means
+ * "put these groups there in the list". One mime type covers both, because VS
+ * Code has to be told about every one up front and there is no need for two.
+ */
+type DraggedRows =
+  | { kind: 'files'; files: DraggedChange[] }
+  | { kind: 'groups'; groupIds: string[] };
 
 /** Where a drop landed. No id means the Ungrouped bucket. */
 interface DropTarget {
@@ -55,21 +67,44 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
   public handleDrag(source: readonly TreeNode[], dataTransfer: vscode.DataTransfer): void {
     const files = source.filter((node): node is FileNode => node instanceof FileNode && !node.frozen);
     if (files.length === 0) {
+      // No file rows in the selection, so this might be group rows being put in
+      // a different order.
+      this.packGroups(source, dataTransfer);
       return;
     }
     const dragged: DraggedChange[] = files.map(node => ({
       fileKey: node.displayChange.fileKey,
       assignmentKeys: node.displayChange.assignmentKeys
     }));
-    dataTransfer.set(TREE_MIME_TYPE, new vscode.DataTransferItem(dragged));
+    dataTransfer.set(TREE_MIME_TYPE, new vscode.DataTransferItem({ kind: 'files', files: dragged } satisfies DraggedRows));
     dataTransfer.set('text/uri-list', new vscode.DataTransferItem(
       files.map(node => node.displayChange.change.uri.toString()).join('\r\n')
     ));
   }
 
+  /**
+   * Packs up dragged group rows, so groups can be put in the order you want.
+   *
+   * Ungrouped is not a group and cannot be moved: it always sits last.
+   */
+  private packGroups(source: readonly TreeNode[], dataTransfer: vscode.DataTransfer): void {
+    const groupIds = source
+      .filter((node): node is GroupNode => node instanceof GroupNode && node.group !== undefined)
+      .map(node => node.group!.id);
+    if (groupIds.length > 0) {
+      dataTransfer.set(TREE_MIME_TYPE, new vscode.DataTransferItem({ kind: 'groups', groupIds } satisfies DraggedRows));
+    }
+  }
+
   /** Works out where the drop landed and moves the files there. */
   public async handleDrop(target: TreeNode | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
     try {
+      const dragged = dataTransfer.get(TREE_MIME_TYPE)?.value as DraggedRows | undefined;
+      if (dragged?.kind === 'groups') {
+        await this.reorderGroups(dragged.groupIds, target);
+        return;
+      }
+
       const destination = resolveDropTarget(target);
       if (!destination) {
         return;
@@ -96,12 +131,35 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
     }
   }
 
+  /**
+   * Puts the dragged groups where they were dropped.
+   *
+   * Dropping onto a group inserts above it. Dropping onto Ungrouped means the
+   * end of the list — Ungrouped always sits below every group, so it is the
+   * natural gesture, and without it last place would be unreachable.
+   */
+  private async reorderGroups(groupIds: readonly string[], target: TreeNode | undefined): Promise<void> {
+    if (!(target instanceof GroupNode)) {
+      return;
+    }
+    const order = this.store.getGroups().map(group => group.id);
+    const moved = target.group
+      ? moveBefore(order, groupIds, target.group.id)
+      : [...order.filter(id => !groupIds.includes(id)), ...groupIds.filter(id => order.includes(id))];
+    if (moved.join() === order.join()) {
+      return;
+    }
+    await this.store.reorderGroups(moved);
+    this.provider.refresh();
+    this.log(`Reordered ${groupIds.length} group${groupIds.length === 1 ? '' : 's'}`);
+  }
+
   /** Our own payload if this came from inside the tree, otherwise raw paths. */
   private async resolveDroppedChanges(dataTransfer: vscode.DataTransfer): Promise<DisplayChange[]> {
     const all = this.provider.getAllChanges();
-    const internal = dataTransfer.get(TREE_MIME_TYPE)?.value as DraggedChange[] | undefined;
-    if (Array.isArray(internal)) {
-      const keys = new Set(internal.map(entry => entry?.fileKey).filter((key): key is string => typeof key === 'string'));
+    const internal = dataTransfer.get(TREE_MIME_TYPE)?.value as DraggedRows | undefined;
+    if (internal?.kind === 'files') {
+      const keys = new Set(internal.files.map(entry => entry?.fileKey).filter((key): key is string => typeof key === 'string'));
       return all.filter(change => keys.has(change.fileKey));
     }
 

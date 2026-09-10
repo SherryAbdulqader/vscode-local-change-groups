@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { referencedHashes } from '../core/frozen';
+import { moveInOrder } from '../core/groups';
 import { describeFileCount } from '../core/text';
 import { DisplayChange, FileNode, GroupNode } from '../view/nodes';
 import { CommandContext, runCommand } from './context';
@@ -49,6 +50,20 @@ export function registerGroupCommands(context: CommandContext): vscode.Disposabl
     const group = await store.createGroup(name, color, changes);
     provider.refresh();
     output.appendLine(`Created ${group.name} holding ${what}`);
+  };
+
+  /**
+   * Moves one group a step up or down the list.
+   *
+   * The stored order is the display order, so this just rewrites it. Nudging the
+   * top group up does nothing rather than wrapping it round to the bottom, which
+   * is why the menu entries can stay enabled at the ends.
+   */
+  const shiftGroup = async (node: GroupNode | undefined, step: number): Promise<void> => {
+    const group = node?.group ?? await pickGroup(store, step < 0 ? 'Select a group to move up' : 'Select a group to move down');
+    if (!group) return;
+    await store.reorderGroups(moveInOrder(store.getGroups().map(item => item.id), group.id, step));
+    provider.refresh();
   };
 
   return [
@@ -144,6 +159,22 @@ export function registerGroupCommands(context: CommandContext): vscode.Disposabl
       }
 
       await fileIntoGroup(changes, `all ${describeFileCount(changes.length)}`);
+    })),
+
+    vscode.commands.registerCommand('localChangeGroups.moveGroupUp', (node?: GroupNode) => runCommand(output, () => shiftGroup(node, -1))),
+
+    vscode.commands.registerCommand('localChangeGroups.moveGroupDown', (node?: GroupNode) => runCommand(output, () => shiftGroup(node, 1))),
+
+    vscode.commands.registerCommand('localChangeGroups.sortGroups', () => runCommand(output, async () => {
+      const groups = store.getGroups();
+      if (groups.length < 2) {
+        void vscode.window.showInformationMessage('There is nothing to sort yet.');
+        return;
+      }
+      const sorted = [...groups].sort((left, right) => left.name.localeCompare(right.name));
+      await store.reorderGroups(sorted.map(group => group.id));
+      provider.refresh();
+      output.appendLine(`Sorted ${groups.length} groups by name`);
     })),
 
     vscode.commands.registerCommand('localChangeGroups.createGroupFromSelection', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
