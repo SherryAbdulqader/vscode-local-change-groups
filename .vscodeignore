@@ -12,6 +12,7 @@
 src/**
 test/**
 tsconfig.json
+scripts/**
 *.map
 **/*.map
 **/*.ts

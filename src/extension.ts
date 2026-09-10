@@ -6,6 +6,7 @@ import { registerGroupCommands } from './commands/groupCommands';
 import { CommandContext, runCommand } from './commands/context';
 import { runPanelAction } from './commands/panelActions';
 import { selectedGroupId } from './commands/selection';
+import { referencedHashes } from './core/frozen';
 import { describeFileCount, errorMessage } from './core/text';
 import { FrozenDrift } from './data/frozenDrift';
 import { GroupStore } from './data/groupStore';
@@ -59,7 +60,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       showCollapseAll: true
     });
 
-    const commands: CommandContext = { store, provider, view, gitApi, output };
+    const commands: CommandContext = { store, provider, view, gitApi, snapshots, output };
     const commitPanel = buildCommitPanel(commands);
     const freezeContext = (): FreezeContext => {
       if (!gitApi) throw new Error('The built-in Git extension is unavailable.');
@@ -102,6 +103,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!gitApi) {
       void vscode.window.showInformationMessage('Local Change Groups requires VS Code\'s built-in Git extension.');
     }
+    // Loading already dropped snapshots for groups that no longer exist, so this
+    // is the moment we know exactly which blobs are still wanted. Clears anything
+    // left behind by an earlier session. Not awaited: it is housekeeping.
+    void snapshots.prune(referencedHashes(store.getAllFrozen()));
     output.appendLine('Local Change Groups activated with guarded group Git actions.');
   } catch (error) {
     output.appendLine(`Activation failed: ${errorMessage(error)}`);

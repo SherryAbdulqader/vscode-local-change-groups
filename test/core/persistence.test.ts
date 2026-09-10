@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { snapshotBelongsTo } from '../../src/core/frozen';
 import { normalizePersistedState } from '../../src/core/persistence';
 
 test('normalizePersistedState removes dangling assignments', () => {
@@ -93,4 +94,25 @@ test('a malformed base hash only costs the base side, not the whole entry', () =
   });
   assert.equal(state.frozen.one.files[0].baseHash, undefined);
   assert.equal(state.frozen.one.files[0].frozenHash, 'a'.repeat(64));
+});
+
+test('a snapshot belongs to the repository it was taken in', () => {
+  const snapshot = { frozenAt: 1, repositoryRoot: '/work/api', files: [] };
+
+  assert.equal(snapshotBelongsTo(snapshot, '/work/api', 'linux'), true);
+  assert.equal(snapshotBelongsTo(snapshot, '/work/web', 'linux'), false);
+});
+
+test('a snapshot matches its repository however Windows spells the path', () => {
+  const snapshot = { frozenAt: 1, repositoryRoot: 'C:/Work/Api', files: [] };
+
+  assert.equal(snapshotBelongsTo(snapshot, 'c:/work/api', 'win32'), true);
+});
+
+test('a snapshot does not match a sibling repository with a similar name', () => {
+  const snapshot = { frozenAt: 1, repositoryRoot: '/work/api', files: [] };
+
+  // Prefix matching would call this a hit, and the second repository would then
+  // show a frozen group whose files are nowhere under its root.
+  assert.equal(snapshotBelongsTo(snapshot, '/work/api-client', 'linux'), false);
 });

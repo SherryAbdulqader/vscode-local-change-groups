@@ -6,6 +6,26 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- With more than one repository open, a frozen group appeared under every one of
+  them, and its file rows pointed at whichever repository the row happened to
+  live under. A freeze captures files from one repository, so it now only counts
+  as frozen in that one; elsewhere the group is an ordinary live group. Frozen
+  rows also build their paths from the snapshot rather than from the row.
+- Deleting a frozen group left its captured file contents in extension storage.
+  Only the freeze commands pruned, so those blobs sat there until the next
+  unfreeze happened to sweep them up. Deleting a group now prunes, and so does
+  startup, which clears anything an earlier session left behind.
+- Dragging a file out of the **Frozen** section moved its group but left the
+  snapshot still listing it, so it showed up under Frozen and under its new
+  group at the same time. Frozen rows are no longer draggable — unfreeze the
+  group to rearrange it. Live rows for frozen files still are, since that work
+  happened after the freeze and grouping it is the point.
+- **Assign or Move Files** listed frozen groups and then refused them with an
+  error. Both assignment commands now share one picker, which lists only groups
+  that can actually take files and offers a new group instead.
+- `npm run package` and `npm run install-extension` had the version written into
+  them by hand, in three places, so bumping it meant silently installing a stale
+  build. They read it from `package.json` now.
 - Freezing a group no longer leaves its files showing in **Ungrouped** at the
   same time as the **Frozen** section. A freeze is meant to park a change, and it
   now does: while a file still matches its snapshot it drops out of the live

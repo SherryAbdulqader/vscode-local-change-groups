@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
+import { referencedHashes } from '../core/frozen';
 import { describeFileCount } from '../core/text';
-import { FileNode, GroupNode } from '../view/nodes';
+import { DisplayChange, FileNode, GroupNode } from '../view/nodes';
 import { CommandContext, runCommand } from './context';
 import { pickAssignTarget, pickChanges, pickColor, pickGroup, pickIcon, promptGroupName, requireRepository } from './prompts';
 import { selectedChanges } from './selection';
@@ -14,7 +15,41 @@ import { selectedChanges } from './selection';
  * files into a group is one save rather than forty.
  */
 export function registerGroupCommands(context: CommandContext): vscode.Disposable[] {
-  const { store, provider, view, gitApi, output } = context;
+  const { store, provider, view, gitApi, snapshots, output } = context;
+
+  /**
+   * Asks where a batch of files should go, and puts them there.
+   *
+   * Both assignment commands come through here so they offer the same choices.
+   * Frozen groups are not among them — the store refuses files while a group is
+   * frozen, so listing one could only ever end in an error message — and making
+   * a new group is offered instead, which is also the way out when there are no
+   * groups yet.
+   *
+   * `what` is the phrase for the batch, so the prompts and the log read as
+   * sentences: "Add all 12 files to group".
+   */
+  const fileIntoGroup = async (changes: DisplayChange[], what: string): Promise<void> => {
+    const target = await pickAssignTarget(store, `Add ${what} to group`);
+    if (!target) return;
+
+    if (target.kind === 'existing') {
+      await store.moveAssignments(changes, target.group.id);
+      provider.refresh();
+      output.appendLine(`Assigned ${what} to ${target.group.name}`);
+      return;
+    }
+
+    const name = await promptGroupName('New Group', `Name for a group holding ${what} (stored only in this workspace)`);
+    if (name === undefined) return;
+    const color = await pickColor();
+    if (!color) return;
+    // Created and filled in one write, so a rejected duplicate name cannot leave
+    // an empty group sitting there.
+    const group = await store.createGroup(name, color, changes);
+    provider.refresh();
+    output.appendLine(`Created ${group.name} holding ${what}`);
+  };
 
   return [
     vscode.commands.registerCommand('localChangeGroups.createGroup', () => runCommand(output, async () => {
@@ -69,16 +104,16 @@ export function registerGroupCommands(context: CommandContext): vscode.Disposabl
       await store.deleteGroup(group.id);
       provider.refresh();
       output.appendLine(`Deleted local group: ${group.name}`);
+      // If it was frozen, its snapshot went with it and nobody references those
+      // blobs any more. Only the freeze commands prune, so without this they
+      // would sit in storage until the next unfreeze happened to sweep them up.
+      await snapshots.prune(referencedHashes(store.getAllFrozen()));
     })),
 
     vscode.commands.registerCommand('localChangeGroups.assignToGroup', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
       const changes = selectedChanges(node, nodes, view) ?? await pickChanges(provider, 'Select changed files');
       if (changes.length === 0) return;
-      const group = await pickGroup(store, `Assign or move ${describeFileCount(changes.length)}`);
-      if (!group) return;
-      await store.moveAssignments(changes, group.id);
-      provider.refresh();
-      output.appendLine(`Assigned ${describeFileCount(changes.length)} to ${group.name}`);
+      await fileIntoGroup(changes, describeFileCount(changes.length));
     })),
 
     vscode.commands.registerCommand('localChangeGroups.removeFromGroup', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {
@@ -108,28 +143,7 @@ export function registerGroupCommands(context: CommandContext): vscode.Disposabl
         return;
       }
 
-      const target = await pickAssignTarget(store, `Add all ${describeFileCount(changes.length)} to group`);
-      if (!target) return;
-
-      if (target.kind === 'existing') {
-        await store.moveAssignments(changes, target.group.id);
-        provider.refresh();
-        output.appendLine(`Assigned all ${describeFileCount(changes.length)} from Ungrouped to ${target.group.name}`);
-        return;
-      }
-
-      const name = await promptGroupName(
-        'New Group from Ungrouped',
-        `Name for a group holding all ${describeFileCount(changes.length)} (stored only in this workspace)`
-      );
-      if (name === undefined) return;
-      const color = await pickColor();
-      if (!color) return;
-      // Created and filled in one write, so a rejected duplicate name cannot
-      // leave an empty group behind.
-      const group = await store.createGroup(name, color, changes);
-      provider.refresh();
-      output.appendLine(`Created ${group.name} holding all ${describeFileCount(changes.length)} from Ungrouped`);
+      await fileIntoGroup(changes, `all ${describeFileCount(changes.length)}`);
     })),
 
     vscode.commands.registerCommand('localChangeGroups.createGroupFromSelection', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {

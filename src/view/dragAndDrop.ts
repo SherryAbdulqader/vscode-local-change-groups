@@ -41,9 +41,19 @@ export class ChangeGroupsDragAndDropController implements vscode.TreeDragAndDrop
     }
   }
 
-  /** Packs up the dragged rows: our own payload, plus URIs for everyone else. */
+  /**
+   * Packs up the dragged rows: our own payload, plus URIs for everyone else.
+   *
+   * Rows in the Frozen section are left out. A frozen group refuses new files,
+   * and it should not lose them either — the snapshot would keep listing a file
+   * that now belongs to another group, so it would show up in both places at
+   * once. Unfreeze the group if you want to rearrange it.
+   *
+   * A live row for a frozen file is still fair game. That is work done since the
+   * freeze, and grouping it somewhere else is the point of it being listed.
+   */
   public handleDrag(source: readonly TreeNode[], dataTransfer: vscode.DataTransfer): void {
-    const files = source.filter((node): node is FileNode => node instanceof FileNode);
+    const files = source.filter((node): node is FileNode => node instanceof FileNode && !node.frozen);
     if (files.length === 0) {
       return;
     }

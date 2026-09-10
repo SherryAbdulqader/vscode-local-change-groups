@@ -1,4 +1,5 @@
 import type { ChangeArea } from './changes';
+import { comparablePath } from './repositoryPaths';
 
 /**
  * Freezing: a snapshot layer that sits between your working tree and the index.
@@ -44,6 +45,21 @@ export interface FrozenSnapshot {
   frozenAt: number;
   repositoryRoot: string;
   files: FrozenFile[];
+}
+
+/**
+ * Was this snapshot taken in this repository?
+ *
+ * A freeze captures files from one repository, so it only means anything in
+ * that one. With a second repository open the same group is just an ordinary
+ * live group there, because none of its frozen files live under that root.
+ */
+export function snapshotBelongsTo(
+  snapshot: FrozenSnapshot,
+  repositoryRoot: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  return comparablePath(snapshot.repositoryRoot, platform) === comparablePath(repositoryRoot, platform);
 }
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/;

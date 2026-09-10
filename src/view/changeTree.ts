@@ -1,7 +1,7 @@
 import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
 import { assignedGroupId, collectChanges, UNGROUPED_KEY, ungroupedChanges } from '../core/changes';
-import { FrozenFile, FrozenSnapshot } from '../core/frozen';
+import { FrozenFile, FrozenSnapshot, snapshotBelongsTo } from '../core/frozen';
 import { ChangeSection, isInSection, isLiveSection } from '../core/sections';
 import { FrozenDrift } from '../data/frozenDrift';
 import { GroupStore } from '../data/groupStore';
@@ -215,7 +215,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
    */
   private topLevelNodes(repository: GitRepository): TreeNode[] {
     const sections: ChangeSection[] = [];
-    if (this.frozenGroupCount() > 0) sections.push('frozen');
+    if (this.frozenGroupIds(repository).size > 0) sections.push('frozen');
     if (this.hasStagedChanges(repository)) sections.push('staged');
     if (sections.length === 0) {
       return this.groupNodes(repository, undefined);
@@ -227,26 +227,51 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   /**
    * The group rows under a repository, or under one section of it.
    *
-   * The Frozen section holds only frozen groups; the live sections hold only
-   * unfrozen ones plus Ungrouped. A group therefore appears in exactly one
-   * place, which is what keeps the two layers from arguing about who owns a file.
+   * The Frozen section holds only groups frozen *in this repository*; the live
+   * sections hold everything else, plus Ungrouped. A group therefore appears in
+   * exactly one place per repository, which is what keeps the two layers from
+   * arguing about who owns a file.
    */
   private groupNodes(repository: GitRepository, section: ChangeSection | undefined): GroupNode[] {
     const groups = this.store.getGroups();
     if (section === 'frozen') {
-      return groups
-        .filter(group => this.store.getFrozen(group.id))
-        .map(group => new GroupNode(repository, group, section, this.store.getFrozen(group.id)!.frozenAt));
+      const frozen: GroupNode[] = [];
+      for (const group of groups) {
+        const snapshot = this.frozenHere(group.id, repository);
+        if (snapshot) {
+          frozen.push(new GroupNode(repository, group, section, snapshot.frozenAt));
+        }
+      }
+      return frozen;
     }
     return [
-      ...groups.filter(group => !this.store.getFrozen(group.id)).map(group => new GroupNode(repository, group, section)),
+      ...groups.filter(group => !this.frozenHere(group.id, repository)).map(group => new GroupNode(repository, group, section)),
       new GroupNode(repository, undefined, section)
     ];
   }
 
-  /** How many groups are currently frozen, deciding whether the section exists. */
-  private frozenGroupCount(): number {
-    return Object.keys(this.store.getAllFrozen()).length;
+  /**
+   * The snapshot pinning this group in this repository, if there is one.
+   *
+   * A freeze captures files from one repository, so it only means anything in
+   * that repository. Open a second one and the same group is just an ordinary
+   * live group there — which is right, because none of its frozen files live
+   * under that root.
+   */
+  private frozenHere(groupId: string, repository: GitRepository): FrozenSnapshot | undefined {
+    const snapshot = this.store.getFrozen(groupId);
+    return snapshot && snapshotBelongsTo(snapshot, repository.rootUri.fsPath) ? snapshot : undefined;
+  }
+
+  /** The groups frozen in this repository. */
+  private frozenGroupIds(repository: GitRepository): Set<string> {
+    const ids = new Set<string>();
+    for (const [groupId, snapshot] of Object.entries(this.store.getAllFrozen())) {
+      if (snapshotBelongsTo(snapshot, repository.rootUri.fsPath)) {
+        ids.add(groupId);
+      }
+    }
+    return ids;
   }
 
   /**
@@ -257,7 +282,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
    */
   private visibleChanges(node: GroupNode): DisplayChange[] {
     if (node.section === 'frozen') {
-      const snapshot = node.group ? this.store.getFrozen(node.group.id) : undefined;
+      const snapshot = node.group ? this.frozenHere(node.group.id, node.repository) : undefined;
       return snapshot ? this.frozenChanges(node.repository, snapshot) : [];
     }
     const changes = this.liveChanges(node);
@@ -283,7 +308,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     }
     return ungroupedChanges(
       grouped,
-      new Set(Object.keys(this.store.getAllFrozen())),
+      this.frozenGroupIds(node.repository),
       change => this.comesBackFromFreeze(change)
     );
   }
@@ -321,7 +346,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return snapshot.files.map(file => ({
       repository,
       change: {
-        uri: vscode.Uri.file(nodePath.join(repository.rootUri.fsPath, file.relativePath)),
+        uri: vscode.Uri.file(nodePath.join(snapshot.repositoryRoot, file.relativePath)),
         status: file.status
       },
       relativePath: file.relativePath,

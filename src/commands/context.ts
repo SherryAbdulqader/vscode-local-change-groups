@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { errorMessage } from '../core/text';
 import { GroupStore } from '../data/groupStore';
+import { SnapshotFiles } from '../data/snapshotFiles';
 import { GitApi } from '../git/api';
 import { ActionContext } from '../services/changeActions';
 import { ChangeGroupsTreeProvider } from '../view/changeTree';
@@ -15,6 +16,8 @@ export interface CommandContext {
   provider: ChangeGroupsTreeProvider;
   view: vscode.TreeView<TreeNode>;
   gitApi: GitApi | undefined;
+  /** Frozen file contents. Deleting a group has to clean its blobs up. */
+  snapshots: SnapshotFiles;
   output: vscode.OutputChannel;
 }
 
