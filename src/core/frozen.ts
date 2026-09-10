@@ -3,20 +3,24 @@ import type { ChangeArea } from './changes';
 /**
  * Freezing: a snapshot layer that sits between your working tree and the index.
  *
- * You finish a piece of work, drop those files in a group, and freeze it. From
- * then on the group shows you *that* change and only that change. Carry on
- * editing the same files for the next problem — the frozen group does not budge,
- * because what it displays comes from the snapshot below rather than from
- * whatever Git currently thinks.
+ * You finish a piece of work, drop those files in a group, and freeze it. The
+ * change is then parked: it comes out of Changes and Ungrouped, and lives in the
+ * Frozen section where you can still open and read it. Much like a stash, except
+ * the files never move and you can still see them.
  *
- * Two things a freeze pins:
- *   - **What it shows.** Clicking a file diffs the two frozen blobs, so later
- *     edits never leak into a diff you already reviewed.
- *   - **What can join.** A frozen group stops accepting new files. That is the
- *     whole point of parking it.
+ * Three things a freeze does:
+ *   - **Gets the change out of the way.** While a file still matches the
+ *     snapshot it is not listed among your live changes, because it is done and
+ *     you are not working on it. Edit it again and the new part reappears in
+ *     Changes, since that part is not parked.
+ *   - **Pins what it shows.** Clicking a file diffs the two frozen blobs, so
+ *     later edits never leak into a diff you already reviewed.
+ *   - **Pins what can join.** A frozen group stops accepting new files. That is
+ *     the whole point of parking it.
  *
  * What a freeze does *not* do is stop you staging or committing the group. It is
- * a viewing and organising layer, not a lock on Git.
+ * a viewing and organising layer, not a lock on Git — and anything already in
+ * the index stays on screen, because that is what your next commit contains.
  *
  * Contents live as content-addressed blobs in extension storage, never inside
  * `.git` — so a freeze still cannot touch your repository.

@@ -90,25 +90,30 @@ export const UNGROUPED_KEY = '';
 /**
  * Everything that currently counts as ungrouped.
  *
- * Two sources, not one. There is the genuine Ungrouped bucket, and there are
- * files whose group has since been frozen: a frozen group renders from its
- * snapshot, so a live edit to one of its files has no row of its own and would
- * simply vanish from the tree. Ungrouped adopts those instead.
+ * The plain Ungrouped bucket, plus any file whose group has since been frozen
+ * and that `comesBack` says is worth showing again.
  *
- * This lives here, rather than inside the tree, so the command that bulk-assigns
- * "everything ungrouped" reads from the same definition the Ungrouped row is
- * drawn from. Two implementations of this rule would eventually disagree, and
- * the disagreement would look like files being silently skipped.
+ * That second part is the whole point. A frozen group draws itself from its
+ * snapshot, so while a file still matches that snapshot the freeze is already
+ * showing it and listing it here too would put the same change on screen twice.
+ * Freezing is meant to park a change, not duplicate it. Edit the file after the
+ * freeze, though, and that new work belongs somewhere — which is what
+ * `comesBack` is asked about.
+ *
+ * The rule lives here, not in the tree, so the Ungrouped row and the command
+ * that bulk-assigns it always agree on which files are in it.
  */
 export function ungroupedChanges(
   grouped: ReadonlyMap<string, CollectedChange[]>,
-  frozenGroupIds: ReadonlySet<string>
+  frozenGroupIds: ReadonlySet<string>,
+  comesBack: (change: CollectedChange) => boolean
 ): CollectedChange[] {
   const ungrouped = grouped.get(UNGROUPED_KEY) ?? [];
-  const orphaned = [...grouped.entries()]
+  const fromFrozen = [...grouped.entries()]
     .filter(([groupId]) => groupId !== UNGROUPED_KEY && frozenGroupIds.has(groupId))
-    .flatMap(([, bucket]) => bucket);
-  return orphaned.length === 0
+    .flatMap(([, bucket]) => bucket)
+    .filter(comesBack);
+  return fromFrozen.length === 0
     ? [...ungrouped]
-    : [...ungrouped, ...orphaned].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    : [...ungrouped, ...fromFrozen].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }

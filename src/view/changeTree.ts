@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { assignedGroupId, collectChanges, UNGROUPED_KEY, ungroupedChanges } from '../core/changes';
 import { FrozenFile, FrozenSnapshot } from '../core/frozen';
 import { ChangeSection, isInSection, isLiveSection } from '../core/sections';
+import { FrozenDrift } from '../data/frozenDrift';
 import { GroupStore } from '../data/groupStore';
 import { GitApi, GitRepository } from '../git/api';
 import { DisplayChange, FileNode, GroupNode, RepositoryNode, SectionNode, TreeNode } from './nodes';
@@ -40,9 +41,13 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   public readonly onDidChangeTreeData = this.changedEmitter.event;
 
   /** Subscribes to every open repository, and to repositories opening later. */
-  public constructor(private readonly gitApi: GitApi | undefined, private readonly store: GroupStore) {
-    if (!store) {
-      throw new Error('A group store is required.');
+  public constructor(
+    private readonly gitApi: GitApi | undefined,
+    private readonly store: GroupStore,
+    private readonly drift: FrozenDrift
+  ) {
+    if (!store || !drift) {
+      throw new Error('A group store and a drift tracker are required.');
     }
     if (gitApi) {
       for (const repository of gitApi.repositories) {
@@ -80,6 +85,19 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     this.cancelScheduledRefresh();
     this.groupingCache.clear();
     this.baselineCache = undefined;
+    // Runs in the background and repaints again by itself if the answer moved,
+    // so this call does not hold up the redraw below.
+    this.drift.recheck(this.store.getAllFrozen());
+    this.changedEmitter.fire();
+  }
+
+  /**
+   * Redraws the rows without clearing anything or rechecking drift.
+   *
+   * This is what the drift tracker calls when its answer changes. Going through
+   * refresh() would start another check, which would finish, call back here...
+   */
+  public repaint(): void {
     this.changedEmitter.fire();
   }
 
@@ -253,18 +271,43 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
   /**
    * Live changes for a row outside the Frozen section.
    *
-   * Ungrouped absorbs anything whose group is frozen. Without this, editing a
-   * file *after* freezing its group would make that edit vanish: the frozen
-   * group renders from its snapshot, so the live change would sit in a bucket
-   * nothing draws. Now the snapshot stays pinned under Frozen and the new work
-   * shows up in Changes, ready to be grouped again.
+   * A named group just lists its own files. Ungrouped is the interesting one: as
+   * well as the genuinely unassigned files, it is where work belonging to a
+   * frozen group reappears once there is something new in it. See
+   * comesBackFromFreeze for what counts as new.
    */
   private liveChanges(node: GroupNode): DisplayChange[] {
     const grouped = this.grouping(node.repository);
     if (node.group) {
       return grouped.get(node.group.id) ?? [];
     }
-    return ungroupedChanges(grouped, new Set(Object.keys(this.store.getAllFrozen())));
+    return ungroupedChanges(
+      grouped,
+      new Set(Object.keys(this.store.getAllFrozen())),
+      change => this.comesBackFromFreeze(change)
+    );
+  }
+
+  /**
+   * Should a file from a frozen group show up in the live lists again?
+   *
+   * Normally no. That is what freezing is for: the change is parked, the frozen
+   * group is already showing it, and repeating it under Ungrouped is the bug this
+   * answers. Three things bring it back.
+   */
+  private comesBackFromFreeze(change: DisplayChange): boolean {
+    // Staged, conflicted, or both staged and edited again. Never hide what your
+    // next commit is going to contain.
+    if (change.area !== 'Working Tree') {
+      return true;
+    }
+    // Not in the snapshot at all — a binary the freeze skipped, or a file renamed
+    // since. The frozen row is not showing it, so hiding it here would lose it.
+    if (!this.frozenBaseline(change.fileKey)) {
+      return true;
+    }
+    // Edited after the freeze. That part is new work and needs somewhere to live.
+    return this.drift.has(change.fileKey);
   }
 
   /**

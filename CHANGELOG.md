@@ -5,6 +5,19 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Freezing a group no longer leaves its files showing in **Ungrouped** at the
+  same time as the **Frozen** section. A freeze is meant to park a change, and it
+  now does: while a file still matches its snapshot it drops out of the live
+  lists entirely, so the list you are working through holds only what you are
+  actually working on. Edit a frozen file again and the new part comes back into
+  **Changes**, marked *since freeze*, because that part is not parked.
+
+  Two things stay visible whatever happens: files you have staged, and files in
+  conflict. That is what the next commit contains, so hiding it would be a good
+  way to commit something you did not mean to. A file the freeze skipped (a
+  binary, say) also stays listed, since no frozen row is showing it.
+
 ### Added
 - **Assign All Ungrouped to Group**, on the **Ungrouped** row and in the Command
   Palette. Takes every ungrouped change in one move rather than a file at a time,

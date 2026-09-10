@@ -7,6 +7,7 @@ import { CommandContext, runCommand } from './commands/context';
 import { runPanelAction } from './commands/panelActions';
 import { selectedGroupId } from './commands/selection';
 import { describeFileCount, errorMessage } from './core/text';
+import { FrozenDrift } from './data/frozenDrift';
 import { GroupStore } from './data/groupStore';
 import { SnapshotFiles } from './data/snapshotFiles';
 import { getGitApi, GitApi } from './git/api';
@@ -40,12 +41,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   try {
     const store = new GroupStore(context.workspaceState);
     const gitApi = await getGitApi();
-    const provider = new ChangeGroupsTreeProvider(gitApi, store);
-    const decorations = new ChangeDecorationProvider();
     // Frozen contents live beside the extension's other workspace state, never
     // inside .git. storageUri is only absent without a workspace, where there is
     // no repository to freeze anyway.
     const snapshots = new SnapshotFiles(nodePath.join(context.storageUri?.fsPath ?? context.globalStorageUri.fsPath, 'frozen'));
+    // Built before the tree because the tree asks it whether a frozen file has
+    // been touched since. The callback is what lets a finished check repaint.
+    const drift = new FrozenDrift(snapshots, () => provider.repaint());
+    const provider = new ChangeGroupsTreeProvider(gitApi, store, drift);
+    const decorations = new ChangeDecorationProvider();
     const dragAndDrop = new ChangeGroupsDragAndDropController(provider, store, message => output.appendLine(message));
 
     const view = vscode.window.createTreeView<TreeNode>('localChangeGroups.view', {

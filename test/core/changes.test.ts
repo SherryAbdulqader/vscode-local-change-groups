@@ -69,27 +69,44 @@ test('ungroupedChanges returns just the Ungrouped bucket when nothing is frozen'
     ['group-1', [collected('src/b.ts')]]
   ]);
 
-  assert.deepEqual(paths(ungroupedChanges(grouped, new Set())), ['src/a.ts']);
+  assert.deepEqual(paths(ungroupedChanges(grouped, new Set(), never)), ['src/a.ts']);
 });
 
-test('ungroupedChanges adopts files whose group is frozen, in path order', () => {
+test('a frozen file stays out of Ungrouped while it is still parked', () => {
+  const grouped = new Map([
+    [UNGROUPED_KEY, [collected('src/a.ts')]],
+    ['frozen-group', [collected('src/parked.ts')]]
+  ]);
+
+  const result = ungroupedChanges(grouped, new Set(['frozen-group']), never);
+
+  // The whole point of a freeze. The frozen group is already showing this file,
+  // so listing it here too would put the same change on screen twice.
+  assert.deepEqual(paths(result), ['src/a.ts']);
+});
+
+test('a frozen file comes back into Ungrouped once there is something new in it', () => {
   const grouped = new Map([
     [UNGROUPED_KEY, [collected('src/b.ts')]],
-    ['frozen-group', [collected('src/a.ts')]],
+    ['frozen-group', [collected('src/a.ts'), collected('src/parked.ts')]],
     ['live-group', [collected('src/c.ts')]]
   ]);
 
-  const result = ungroupedChanges(grouped, new Set(['frozen-group']));
+  const result = ungroupedChanges(
+    grouped,
+    new Set(['frozen-group']),
+    change => change.relativePath === 'src/a.ts'
+  );
 
-  // The frozen group renders from its snapshot, so its live change has no row
-  // of its own and Ungrouped takes it. The live group keeps its own.
+  // Only the edited one returns, sorted in with the rest. The still-parked file
+  // and the live group are both left alone.
   assert.deepEqual(paths(result), ['src/a.ts', 'src/b.ts']);
 });
 
 test('ungroupedChanges does not double-count if the sentinel is marked frozen', () => {
   const grouped = new Map([[UNGROUPED_KEY, [collected('src/a.ts')]]]);
 
-  const result = ungroupedChanges(grouped, new Set([UNGROUPED_KEY]));
+  const result = ungroupedChanges(grouped, new Set([UNGROUPED_KEY]), always);
 
   assert.deepEqual(paths(result), ['src/a.ts']);
 });
@@ -98,13 +115,19 @@ test('ungroupedChanges never hands back the array it was given', () => {
   const bucket = [collected('src/a.ts')];
   const grouped = new Map([[UNGROUPED_KEY, bucket]]);
 
-  const result = ungroupedChanges(grouped, new Set());
+  const result = ungroupedChanges(grouped, new Set(), never);
   result.push(collected('src/b.ts'));
 
   // The tree hands over its cached grouping, so a caller that sorts or splices
   // the result must not be quietly editing what the next repaint will draw.
   assert.equal(bucket.length, 1);
 });
+
+/** Nothing has been touched since it was frozen. */
+const never = () => false;
+
+/** Everything has. */
+const always = () => true;
 
 /** Only relativePath matters to the grouping rules under test. */
 function collected(relativePath: string): CollectedChange {

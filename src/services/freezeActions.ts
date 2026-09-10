@@ -1,9 +1,8 @@
-import * as fs from 'node:fs/promises';
-import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
 import { FrozenFile, FrozenSnapshot, referencedHashes } from '../core/frozen';
 import { describeFileCount } from '../core/text';
 import { GroupStore } from '../data/groupStore';
+import { driftedFrozenFiles, readWorkingFile } from '../data/frozenDrift';
 import { SnapshotFiles } from '../data/snapshotFiles';
 import { GitRunner } from '../git/runner';
 import { ChangeGroupsTreeProvider } from '../view/changeTree';
@@ -163,17 +162,10 @@ function reportUnfreeze(context: FreezeContext, subject: string, drifted: readon
     });
 }
 
-/** Which frozen files no longer match what is on disk. */
+/** The paths of frozen files that no longer match what is on disk. */
 export async function driftedFiles(context: FreezeContext, snapshot: FrozenSnapshot): Promise<string[]> {
-  const drifted: string[] = [];
-  for (const file of snapshot.files) {
-    const current = await readWorkingFile(snapshot.repositoryRoot, file.relativePath);
-    // A file that is gone counts as drift: it certainly does not match.
-    if (current === undefined || await context.snapshots.read(file.frozenHash) !== current) {
-      drifted.push(file.relativePath);
-    }
-  }
-  return drifted;
+  const drifted = await driftedFrozenFiles(context.snapshots, snapshot);
+  return drifted.map(file => file.relativePath);
 }
 
 /** Reads both sides of one file, or nothing if it is not usable text. */
@@ -203,15 +195,4 @@ async function captureFile(
     frozenHash: await context.snapshots.write(working),
     ...(base !== undefined ? { baseHash: await context.snapshots.write(base) } : {})
   };
-}
-
-/** Reads a working-tree file as text, or undefined if it is missing or binary. */
-async function readWorkingFile(repositoryRoot: string, relativePath: string): Promise<string | undefined> {
-  try {
-    const buffer = await fs.readFile(nodePath.join(repositoryRoot, relativePath));
-    // A NUL byte is the same cheap heuristic Git uses to call something binary.
-    return buffer.includes(0) ? undefined : buffer.toString('utf8');
-  } catch {
-    return undefined;
-  }
 }

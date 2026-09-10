@@ -31,12 +31,15 @@ Freezing is a snapshot layer between your working tree and the index.
 
 Finish a piece of work, drop those files into a group, name it **Problem 1**, and freeze it. From then on the group shows you *that* change and nothing else. Keep editing the same files for the next problem — click a frozen row and you still see exactly the diff you reviewed, because it is served from the snapshot rather than from Git.
 
-Frozen groups live in their own **Frozen** section, separate from Staged Changes and Changes. That separation is the point: keep editing a frozen file and the new work shows up in **Changes** as an ordinary ungrouped change, ready to be grouped again, while the snapshot stays pinned above it. One file, two rows, two different questions answered.
+A frozen change gets out of your way. Its files leave **Changes** and **Ungrouped** and live in their own **Frozen** section, so the list you are working through only holds what you are actually working on. It behaves like a stash, except nothing moves on disk and you can still open any frozen row and read the diff.
 
-A freeze pins two things:
+Keep editing a frozen file and the new part comes back into **Changes** as an ordinary ungrouped change, marked *since freeze* and diffed against the frozen copy. So the reviewed change stays parked above and only the new work shows up below. Two other things always stay visible, on purpose: anything you have staged, and anything in conflict — that is what your next commit contains, and hiding it would be a good way to commit something you did not mean to.
 
-- **What the group displays.** Later edits never leak into a diff you already looked at.
-- **What can join it.** A frozen group stops accepting new files, which is the point of parking it.
+A freeze does three things:
+
+- **Gets the change out of the way.** A file that still matches the snapshot is not listed among your live changes.
+- **Pins what the group displays.** Later edits never leak into a diff you already looked at.
+- **Pins what can join it.** A frozen group stops accepting new files, which is the point of parking it.
 
 It does **not** stop you working. You can still edit those files, and you can still stage, commit, or push the group — Git acts on the current content, as always.
 
