@@ -1,6 +1,6 @@
 import * as nodePath from 'node:path';
 import * as vscode from 'vscode';
-import { assignedGroupId, collectChanges } from '../core/changes';
+import { assignedGroupId, collectChanges, UNGROUPED_KEY, ungroupedChanges } from '../core/changes';
 import { FrozenFile, FrozenSnapshot } from '../core/frozen';
 import { ChangeSection, isInSection, isLiveSection } from '../core/sections';
 import { GroupStore } from '../data/groupStore';
@@ -10,9 +10,6 @@ import { fileItem, groupItem, repositoryItem, sectionItem } from './treeItems';
 
 /** Long enough to swallow a burst of Git events, short enough to feel instant. */
 const REFRESH_DEBOUNCE_MS = 120;
-
-/** Stands in for Ungrouped. Safe because a real group id is always a UUID. */
-const UNGROUPED_KEY = '';
 
 /**
  * Decides what is in the tree, and keeps it in step with Git.
@@ -174,7 +171,21 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     return this.changesForGroup(node.repository, node.group.id);
   }
 
-/**
+  /**
+   * Everything the Ungrouped row is showing, sections ignored.
+   *
+   * Sections are deliberately ignored for the same reason `getGroupChanges`
+   * ignores them: "assign everything ungrouped" should mean the same thing
+   * whether you started from the row under Changes or the one under Staged
+   * Changes. Filing half of it because of where you right-clicked would be a
+   * nasty surprise.
+   */
+  public getUngroupedChanges(repository: GitRepository): DisplayChange[] {
+    if (!repository) throw new Error('A valid Git repository is required.');
+    return this.liveChanges(new GroupNode(repository, undefined));
+  }
+
+  /**
    * Decides which sections exist right now.
    *
    * With nothing staged and nothing frozen there is nothing to split, so groups
@@ -253,15 +264,7 @@ export class ChangeGroupsTreeProvider implements vscode.TreeDataProvider<TreeNod
     if (node.group) {
       return grouped.get(node.group.id) ?? [];
     }
-    const frozenIds = new Set(Object.keys(this.store.getAllFrozen()));
-    const orphaned = [...grouped.entries()]
-      .filter(([groupId]) => frozenIds.has(groupId))
-      .flatMap(([, bucket]) => bucket);
-    if (orphaned.length === 0) {
-      return grouped.get(UNGROUPED_KEY) ?? [];
-    }
-    return [...(grouped.get(UNGROUPED_KEY) ?? []), ...orphaned]
-      .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    return ungroupedChanges(grouped, new Set(Object.keys(this.store.getAllFrozen())));
   }
 
   /**

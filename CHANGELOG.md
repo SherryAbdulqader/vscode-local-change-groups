@@ -3,6 +3,20 @@
 All notable changes to the Local Change Groups extension are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Assign All Ungrouped to Group**, on the **Ungrouped** row and in the Command
+  Palette. Takes every ungrouped change in one move rather than a file at a time,
+  and offers creating a group inline so it still works with no groups yet. Frozen
+  groups are omitted from the picker because they refuse new files until unfrozen.
+  The action is hidden on an empty Ungrouped row.
+
+### Changed
+- The rule for what counts as ungrouped — the plain bucket plus any change whose
+  group has since been frozen — now lives in one place, shared by the tree and the
+  new bulk action, so the two cannot disagree about which files are included.
+
 ## [0.3.0]
 
 ### Added

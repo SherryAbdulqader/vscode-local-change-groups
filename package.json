@@ -76,6 +76,12 @@
         "category": "Local Change Groups"
       },
       {
+        "command": "localChangeGroups.assignAllUngrouped",
+        "title": "Assign All Ungrouped to Group",
+        "icon": "$(arrow-right)",
+        "category": "Local Change Groups"
+      },
+      {
         "command": "localChangeGroups.removeFromGroup",
         "title": "Remove Files from Group",
         "icon": "$(close)",
@@ -367,6 +373,16 @@
           "command": "localChangeGroups.createGroupFromSelection",
           "when": "view == localChangeGroups.view && viewItem =~ /localChangeGroups\\.file/ && !(viewItem =~ /\\.frozen$/)",
           "group": "group@0"
+        },
+        {
+          "command": "localChangeGroups.assignAllUngrouped",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.ungrouped",
+          "group": "inline@1"
+        },
+        {
+          "command": "localChangeGroups.assignAllUngrouped",
+          "when": "view == localChangeGroups.view && viewItem == localChangeGroups.ungrouped",
+          "group": "group@1"
         },
         {
           "command": "localChangeGroups.assignToGroup",

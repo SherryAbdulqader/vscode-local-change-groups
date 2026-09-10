@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { describeFileCount } from '../core/text';
 import { FileNode, GroupNode } from '../view/nodes';
 import { CommandContext, runCommand } from './context';
-import { pickChanges, pickColor, pickGroup, pickIcon, promptGroupName } from './prompts';
+import { pickAssignTarget, pickChanges, pickColor, pickGroup, pickIcon, promptGroupName, requireRepository } from './prompts';
 import { selectedChanges } from './selection';
 
 /**
@@ -14,7 +14,7 @@ import { selectedChanges } from './selection';
  * files into a group is one save rather than forty.
  */
 export function registerGroupCommands(context: CommandContext): vscode.Disposable[] {
-  const { store, provider, view, output } = context;
+  const { store, provider, view, gitApi, output } = context;
 
   return [
     vscode.commands.registerCommand('localChangeGroups.createGroup', () => runCommand(output, async () => {
@@ -87,6 +87,49 @@ export function registerGroupCommands(context: CommandContext): vscode.Disposabl
       await store.unassignAll(changes.flatMap(change => change.assignmentKeys));
       provider.refresh();
       output.appendLine(`Returned ${describeFileCount(changes.length)} to Ungrouped`);
+    })),
+
+    /**
+     * Empty the Ungrouped row into one group in a single move.
+     *
+     * The row can easily hold a hundred files after a branch switch, and filing
+     * them by hand — or even by selecting them all first — is the tedious part
+     * this whole view exists to remove. So this takes whatever the row is
+     * showing, all sections at once, and asks only where to put it.
+     *
+     * No confirmation, deliberately: nothing here touches the repository, and
+     * the way to undo it is to do it again with a different answer.
+     */
+    vscode.commands.registerCommand('localChangeGroups.assignAllUngrouped', (node?: GroupNode) => runCommand(output, async () => {
+      const repository = requireRepository(node, gitApi);
+      const changes = provider.getUngroupedChanges(repository);
+      if (changes.length === 0) {
+        void vscode.window.showInformationMessage('Nothing is ungrouped.');
+        return;
+      }
+
+      const target = await pickAssignTarget(store, `Add all ${describeFileCount(changes.length)} to group`);
+      if (!target) return;
+
+      if (target.kind === 'existing') {
+        await store.moveAssignments(changes, target.group.id);
+        provider.refresh();
+        output.appendLine(`Assigned all ${describeFileCount(changes.length)} from Ungrouped to ${target.group.name}`);
+        return;
+      }
+
+      const name = await promptGroupName(
+        'New Group from Ungrouped',
+        `Name for a group holding all ${describeFileCount(changes.length)} (stored only in this workspace)`
+      );
+      if (name === undefined) return;
+      const color = await pickColor();
+      if (!color) return;
+      // Created and filled in one write, so a rejected duplicate name cannot
+      // leave an empty group behind.
+      const group = await store.createGroup(name, color, changes);
+      provider.refresh();
+      output.appendLine(`Created ${group.name} holding all ${describeFileCount(changes.length)} from Ungrouped`);
     })),
 
     vscode.commands.registerCommand('localChangeGroups.createGroupFromSelection', (node?: FileNode, nodes?: FileNode[]) => runCommand(output, async () => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assignedGroupId, collectChanges } from '../../src/core/changes';
+import { assignedGroupId, collectChanges, UNGROUPED_KEY, ungroupedChanges } from '../../src/core/changes';
+import type { CollectedChange } from '../../src/core/changes';
 import { assignmentKey, relativeChangePath } from '../../src/core/repositoryPaths';
 import type { GitChange, GitRepository } from '../../src/git/api';
 
@@ -61,6 +62,58 @@ test('collectChanges retains the original assignment key for a rename', () => {
   const oldKey = assignmentKey('C:\\repo', 'src/old.ts');
   assert.equal(assignedGroupId(result, key => key === oldKey ? 'local-only' : undefined), 'local-only');
 });
+
+test('ungroupedChanges returns just the Ungrouped bucket when nothing is frozen', () => {
+  const grouped = new Map([
+    [UNGROUPED_KEY, [collected('src/a.ts')]],
+    ['group-1', [collected('src/b.ts')]]
+  ]);
+
+  assert.deepEqual(paths(ungroupedChanges(grouped, new Set())), ['src/a.ts']);
+});
+
+test('ungroupedChanges adopts files whose group is frozen, in path order', () => {
+  const grouped = new Map([
+    [UNGROUPED_KEY, [collected('src/b.ts')]],
+    ['frozen-group', [collected('src/a.ts')]],
+    ['live-group', [collected('src/c.ts')]]
+  ]);
+
+  const result = ungroupedChanges(grouped, new Set(['frozen-group']));
+
+  // The frozen group renders from its snapshot, so its live change has no row
+  // of its own and Ungrouped takes it. The live group keeps its own.
+  assert.deepEqual(paths(result), ['src/a.ts', 'src/b.ts']);
+});
+
+test('ungroupedChanges does not double-count if the sentinel is marked frozen', () => {
+  const grouped = new Map([[UNGROUPED_KEY, [collected('src/a.ts')]]]);
+
+  const result = ungroupedChanges(grouped, new Set([UNGROUPED_KEY]));
+
+  assert.deepEqual(paths(result), ['src/a.ts']);
+});
+
+test('ungroupedChanges never hands back the array it was given', () => {
+  const bucket = [collected('src/a.ts')];
+  const grouped = new Map([[UNGROUPED_KEY, bucket]]);
+
+  const result = ungroupedChanges(grouped, new Set());
+  result.push(collected('src/b.ts'));
+
+  // The tree hands over its cached grouping, so a caller that sorts or splices
+  // the result must not be quietly editing what the next repaint will draw.
+  assert.equal(bucket.length, 1);
+});
+
+/** Only relativePath matters to the grouping rules under test. */
+function collected(relativePath: string): CollectedChange {
+  return { relativePath } as CollectedChange;
+}
+
+function paths(changes: CollectedChange[]): string[] {
+  return changes.map(item => item.relativePath);
+}
 
 function change(fsPath: string, status: number): GitChange {
   return { uri: { fsPath } as GitChange['uri'], status };

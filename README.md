@@ -9,6 +9,7 @@ Prefer it beside the built-in **Changes** list? Drag the view's title onto the S
 - Create, rename, recolor, and delete private groups.
 - Drag files onto a group to assign them, onto **Ungrouped** to remove them, or onto a file row to join that row's group. Files dragged in from the Explorer or the built-in **Changes** list work too.
 - Select many files with `Ctrl`/`Shift` and assign, move, or remove them in one action, or turn the selection straight into a new group.
+- File everything at once with **Assign All Ungrouped to Group** on the **Ungrouped** row: one click, pick a group, and the whole bucket moves. The picker offers a new group inline, so an empty workspace is not a dead end. Frozen groups are left out, since they cannot take new files until unfrozen.
 - Read file rows the way you read the built-in **Changes** list: file-theme icon, file name, dim folder path, and a single-letter status badge (`M`, `A`, `D`, `R`, `U`, `C`) in the matching Git color.
 - Assign, move, and remove changed files through tree menus or the Command Palette.
 - Give each group its own icon — a beaker for Tests, a lock for Local Only, a rocket for what is ready to ship. Pick from sixteen, or type any VS Code codicon id. Emoji work too: put one straight in the group name.

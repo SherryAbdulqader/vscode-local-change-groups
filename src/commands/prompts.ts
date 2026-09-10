@@ -10,7 +10,7 @@ import {
 import { frozenLabel } from '../core/frozen';
 import { describeFileCount, errorMessage } from '../core/text';
 import { GroupStore } from '../data/groupStore';
-import { GitApi } from '../git/api';
+import { GitApi, GitRepository } from '../git/api';
 import { ChangeGroupsTreeProvider } from '../view/changeTree';
 import { DisplayChange, GroupNode } from '../view/nodes';
 
@@ -40,6 +40,48 @@ export async function pickGroup(store: GroupStore, placeHolder: string): Promise
     { placeHolder }
   );
   return selection?.group;
+}
+
+/**
+ * Where a batch of files should end up: a group that already exists, or a new
+ * one the user wants to make on the spot.
+ */
+export type AssignTarget =
+  | { kind: 'existing'; group: LocalGroup }
+  | { kind: 'new' };
+
+/**
+ * Pick somewhere to put files, with making a new group offered inline.
+ *
+ * Two differences from `pickGroup`, both there to keep a bulk assignment from
+ * dead-ending.
+ *
+ * Frozen groups are left out rather than listed and then refused. A frozen group
+ * is showing a snapshot, so the store rejects files dropped into it — offering
+ * one here would only ever produce an error message, and the picker should show
+ * what the command can actually do.
+ *
+ * And "New Group" is always available, so arriving with no groups at all (or with
+ * every group frozen) is still a route forwards instead of a scolding.
+ */
+export async function pickAssignTarget(store: GroupStore, placeHolder: string): Promise<AssignTarget | undefined> {
+  if (!placeHolder.trim()) {
+    throw new Error('A picker prompt is required.');
+  }
+  const frozen = store.getAllFrozen();
+  const groups = store.getGroups().filter(group => !frozen[group.id]);
+  const selection = await vscode.window.showQuickPick<vscode.QuickPickItem & { group?: LocalGroup }>(
+    [
+      { label: '$(new-folder) New Group…', description: 'Create a group for these files' },
+      ...(groups.length > 0
+        ? [{ label: 'Existing groups', kind: vscode.QuickPickItemKind.Separator } as vscode.QuickPickItem]
+        : []),
+      ...groups.map(group => ({ label: `$(${group.icon ?? DEFAULT_GROUP_ICON}) ${group.name}`, group }))
+    ],
+    { placeHolder, matchOnDescription: true }
+  );
+  if (!selection) return undefined;
+  return selection.group ? { kind: 'existing', group: selection.group } : { kind: 'new' };
 }
 
 /**
@@ -195,6 +237,24 @@ export async function requireGroupNode(
   const repositories = gitApi?.repositories ?? [];
   if (repositories.length !== 1) throw new Error('Run this command from a group row when multiple repositories are open.');
   return new GroupNode(repositories[0], group);
+}
+
+/**
+ * Which repository did this mean?
+ *
+ * Obvious from a row. From the Command Palette with several repositories open it
+ * is not, so we ask the user to go via a row rather than picking one and filing
+ * the wrong project's changes.
+ */
+export function requireRepository(
+  node: { repository: GitRepository } | undefined,
+  gitApi: GitApi | undefined
+): GitRepository {
+  if (node?.repository) return node.repository;
+  const repositories = gitApi?.repositories ?? [];
+  if (repositories.length === 0) throw new Error('No Git repository is open.');
+  if (repositories.length !== 1) throw new Error('Run this command from a row in the view when multiple repositories are open.');
+  return repositories[0];
 }
 
 /** Same idea, but starting from an id the commit panel sent us. */

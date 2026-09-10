@@ -72,10 +72,13 @@ export function groupItem(node: GroupNode, count: number): vscode.TreeItem {
     ? frozen
       ? `${name} — ${count} file${count === 1 ? '' : 's'} frozen ${frozenLabel(node.frozenAt!)}\nShowing the snapshot. Later edits to these files will not appear here.`
       : `${name} — ${count} change${count === 1 ? '' : 's'}\nDrop files here to assign them.`
-    : 'Changes that belong to no group\nDrop files here to remove them from their group.';
+    : 'Changes that belong to no group\nDrop files here to remove them from their group, or use Assign All to file the lot at once.';
   item.contextValue = node.group
     ? frozen ? 'localChangeGroups.group.frozen' : 'localChangeGroups.group'
-    : 'localChangeGroups.ungrouped';
+    // Whether the row has anything in it rides along in the context value, so
+    // package.json can keep "Assign All Ungrouped to Group" off an empty row
+    // instead of offering an action with nothing to act on.
+    : count ? 'localChangeGroups.ungrouped' : 'localChangeGroups.ungrouped.empty';
   item.iconPath = new vscode.ThemeIcon(
     node.group ? frozen ? 'lock' : node.group.icon ?? DEFAULT_GROUP_ICON : 'circle-outline',
     node.group ? groupThemeColor(node.group.color) : undefined

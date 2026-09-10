@@ -78,3 +78,37 @@ function mergeChangeArea(existing: ChangeArea, incoming: ChangeArea): ChangeArea
   }
   return existing;
 }
+
+/**
+ * The key the Ungrouped bucket lives under.
+ *
+ * The empty string is safe as a sentinel because a real group id is always a
+ * UUID, so it can never collide with one.
+ */
+export const UNGROUPED_KEY = '';
+
+/**
+ * Everything that currently counts as ungrouped.
+ *
+ * Two sources, not one. There is the genuine Ungrouped bucket, and there are
+ * files whose group has since been frozen: a frozen group renders from its
+ * snapshot, so a live edit to one of its files has no row of its own and would
+ * simply vanish from the tree. Ungrouped adopts those instead.
+ *
+ * This lives here, rather than inside the tree, so the command that bulk-assigns
+ * "everything ungrouped" reads from the same definition the Ungrouped row is
+ * drawn from. Two implementations of this rule would eventually disagree, and
+ * the disagreement would look like files being silently skipped.
+ */
+export function ungroupedChanges(
+  grouped: ReadonlyMap<string, CollectedChange[]>,
+  frozenGroupIds: ReadonlySet<string>
+): CollectedChange[] {
+  const ungrouped = grouped.get(UNGROUPED_KEY) ?? [];
+  const orphaned = [...grouped.entries()]
+    .filter(([groupId]) => groupId !== UNGROUPED_KEY && frozenGroupIds.has(groupId))
+    .flatMap(([, bucket]) => bucket);
+  return orphaned.length === 0
+    ? [...ungrouped]
+    : [...ungrouped, ...orphaned].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+}
